@@ -1,11 +1,21 @@
 FROM python:3.9-slim
 
+# Install PostgreSQL client and dependencies
+RUN apt-get update && apt-get install -y \
+    postgresql postgresql-contrib \
+    && rm -rf /var/lib/apt/lists/*  # Clean up apt cache
+
+# Install Python dependencies
+RUN pip install --no-cache-dir flask requests psycopg2
+
+# Set the working directory
 WORKDIR /app
 
+# Copy your Flask application
 COPY app/aggregator.py /app/aggregator.py
 
-RUN pip install flask requests
-
+# Expose the port the app will run on
 EXPOSE 5000
 
+# Set the command to run your Flask app
 CMD ["python", "aggregator.py"]
