@@ -24,6 +24,7 @@ def send_init():
     for worker_url in WORKERS:
         for table in tables:
             response = requests.post(f"{worker_url}/init", json={"name": table, "rows": db.fetch_all(table)})
+            print(response)
             if response.status_code != 200:
                 print("Error sending init to worker")
 

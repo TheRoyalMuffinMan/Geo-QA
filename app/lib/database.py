@@ -60,8 +60,8 @@ class Database:
         except Exception as e:
             print(f"Error setting up database: {e}")
 
-    def insert_rows(table: Table):
-        pass
+    def insert_rows(self, table: Table):
+        return
 
     def __load_schema(self) -> None:
         # Load schema
@@ -91,7 +91,7 @@ class Database:
             colnames = [desc[0] for desc in cursor.description]
             
             # Convert to list of dictionaries
-            result = [dict(zip(colnames, row)) for row in rows]
+            result = [dict(zip(colnames, map(str, list(row)))) for row in rows]
             
             cursor.close()
             conn.close()
