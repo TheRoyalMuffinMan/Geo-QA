@@ -69,3 +69,34 @@ class Database:
 
         # Verify schema is loaded in docker log
         subprocess.run(['psql', '-U', self.user, '-d', self.name, '-c', '\\dt'], check=True)
+        
+    
+    def fetch_all(self, table_name: str) -> list[dict]:
+        try:
+            conn = psycopg2.connect(
+                dbname=self.name,
+                user=self.user,
+                password=self.password,
+                host=self.host,
+                port=self.port
+            )
+            cursor = conn.cursor()
+            
+            # Fetch all rows
+            query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(table_name))
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            
+            # Get column names
+            colnames = [desc[0] for desc in cursor.description]
+            
+            # Convert to list of dictionaries
+            result = [dict(zip(colnames, row)) for row in rows]
+            
+            cursor.close()
+            conn.close()
+            
+            return result
+        except Exception as e:
+            print(f"Error fetching data from {table_name}: {e}")
+            return []
