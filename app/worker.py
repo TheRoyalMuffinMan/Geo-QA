@@ -17,25 +17,16 @@ def setup():
     table = request.json.get('rows')
 
 def init_worker() -> None:
-    # # Start PostgreSQL
-    # subprocess.run(['service', 'postgresql', 'start'], check=True)
-
-    # # Edit config file
-    # file = open(POSTGRESQL_CONFIG_FILE, 'r+')
-    # file_contents = file.read()
-    # file_contents = file_contents.replace("peer", "trust")
-    # file.write(file_contents)
-    # file.close()
-    # print("here")
-
-
+    # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
     port = os.getenv('DB_PORT', 5432)
     name = os.getenv('DB_NAME', 'mydb')
     user = os.getenv('DB_USER', 'myuser')
     password = os.getenv('DB_PASSWORD', 'mypassword')
+    schema = os.getenv('DB_SCHEMA', 'schema.sql')
 
-    db = Database(host, port, name, user, password)
+    # Setup Database
+    db = Database(host, port, name, user, password, schema)
 
 def main() -> None:
     init_worker()

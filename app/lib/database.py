@@ -6,12 +6,13 @@ from psycopg2 import sql
 from psycopg2.errors import DuplicateDatabase
 
 class Database:
-    def __init__(self, host: str, port: str, db_name: str, user: str, password: str) -> None:
+    def __init__(self, host: str, port: str, db_name: str, user: str, password: str, schema: str) -> None:
         self.host = host
         self.port = port
         self.db_name = db_name
         self.user = user
         self.password = password
+        self.schema = schema
         self.__postgres_wait()
         self.__postgres_setup()
         self.__load_schema()
@@ -78,5 +79,5 @@ class Database:
 
     
     def __load_schema(self) -> None:
-        subprocess.run(['psql', '-U', 'postgres', '-d', self.db_name, '-f', 'schema.sql'], check=True)
+        subprocess.run(['psql', '-U', 'postgres', '-d', self.db_name, '-f', self.schema], check=True)
         subprocess.run(['psql', '-U', 'postgres', '-d', self.db_name, '-c', '\\dt'], check=True)

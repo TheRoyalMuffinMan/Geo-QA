@@ -44,7 +44,8 @@ EXPOSE 80
 ENV DB_HOST=localhost
 ENV DB_PORT=5432
 ENV DB_NAME=db
-ENV DB_USER=node
+ENV DB_USER=user
 ENV DB_PASSWORD=password
+ENV DB_SCHEMA=schema.sql
 
 CMD ["./startup.sh"]
