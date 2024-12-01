@@ -20,12 +20,12 @@ def init_worker() -> None:
     # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
     port = os.getenv('DB_PORT', 5432)
-    name = os.getenv('DB_NAME', 'mydb')
-    user = os.getenv('DB_USER', 'myuser')
+    name = os.getenv('DB_NAME', 'db')
+    user = os.getenv('DB_USER', 'user')
     password = os.getenv('DB_PASSWORD', 'mypassword')
     schema = os.getenv('DB_SCHEMA', 'schema.sql')
 
-    # Setup Database
+    # Initialize Database
     db = Database(host, port, name, user, password, schema)
 
 def main() -> None:

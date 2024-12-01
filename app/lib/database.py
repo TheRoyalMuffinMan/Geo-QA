@@ -1,9 +1,9 @@
-import time
+from psycopg2.errors import DuplicateDatabase
+from psycopg2 import sql
+from .globals import *
 import subprocess
 import psycopg2
-from .globals import *
-from psycopg2 import sql
-from psycopg2.errors import DuplicateDatabase
+import time
 
 class Database:
     def __init__(self, host: str, port: str, db_name: str, user: str, password: str, schema: str) -> None:
@@ -14,7 +14,7 @@ class Database:
         self.password = password
         self.schema = schema
         self.__postgres_wait()
-        self.__postgres_setup()
+        self.__postgres_db_setup()
         self.__load_schema()
 
     def __repr__(self) -> str:
@@ -25,9 +25,9 @@ class Database:
         while True:
             try:
                 conn = psycopg2.connect(
-                    dbname="postgres",
-                    user="postgres",
-                    password="postgres",
+                    dbname=self.db_name,
+                    user=self.user,
+                    password=self.password,
                     host=self.host,
                     port=self.port
                 )
@@ -37,12 +37,12 @@ class Database:
             except psycopg2.OperationalError:
                 time.sleep(2)
     
-    def __postgres_setup(self) -> None:
+    def __postgres_db_setup(self) -> None:
         try:
             conn = psycopg2.connect(
-                dbname="postgres",  
-                user="postgres",    
-                password="postgres",
+                dbname=self.db_name,
+                user=self.user,
+                password=self.password,
                 host=self.host,
                 port=self.port
             )
@@ -55,23 +55,6 @@ class Database:
             except DuplicateDatabase:
                 print(f"Database {self.db_name} already exists.")
 
-            try:
-                cursor.execute(
-                    sql.SQL("CREATE USER {} WITH PASSWORD %s").format(sql.Identifier(self.user)),
-                    [self.password]
-                )
-                print(f"User {self.user} created.")
-            except Exception as e:
-                print(f"Error creating user: {e}")
-
-            cursor.execute(
-                sql.SQL("GRANT ALL PRIVILEGES ON DATABASE {} TO {}").format(
-                    sql.Identifier(self.db_name),
-                    sql.Identifier(self.user)
-                )
-            )
-            print(f"Granted ALL privileges on {self.db_name} to {self.user}.")
-
             cursor.close()
             conn.close()
         except Exception as e:
@@ -79,5 +62,8 @@ class Database:
 
     
     def __load_schema(self) -> None:
-        subprocess.run(['psql', '-U', 'postgres', '-d', self.db_name, '-f', self.schema], check=True)
-        subprocess.run(['psql', '-U', 'postgres', '-d', self.db_name, '-c', '\\dt'], check=True)
+        # Load schema
+        subprocess.run(['psql', '-U', self.user, '-d', self.db_name, '-f', self.schema], check=True)
+
+        # Verify schema is loaded in docker log
+        subprocess.run(['psql', '-U', self.user, '-d', self.db_name, '-c', '\\dt'], check=True)
