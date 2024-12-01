@@ -1,4 +1,4 @@
-from globals import *
+from .globals import *
 
 class Task:
     def __init__(self, query: str, response: ResponseType) -> None:

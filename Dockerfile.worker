@@ -1,16 +1,50 @@
-FROM python:3.9-slim
+# FROM python:3.9-slim
 
-# Install PostgreSQL client and dependencies
-RUN apt-get update && apt-get install -y \
-    postgresql postgresql-contrib \
-    && rm -rf /var/lib/apt/lists/*  # Clean up apt cache
+# # Install PostgreSQL client and dependencies
+# RUN apt-get update && apt-get install -y vim && apt-get install -y \
+#     postgresql postgresql-contrib \
+#     && rm -rf /var/lib/apt/lists/*  # Clean up apt cache
+
+# WORKDIR /app
+
+# COPY ./app /app
+
+# RUN pip install flask requests psycopg2-binary
+
+# EXPOSE 5432
+# EXPOSE 5000
+
+# CMD ["python", "-u", "worker.py"]
+
+FROM postgres:10.0-alpine
+RUN apk add --update --no-cache g++ alpine-sdk
+RUN apk --no-cache add python3-dev
+RUN apk add --no-cache python3 && \
+    python3 -m ensurepip && \
+    rm -r /usr/lib/python*/ensurepip && \
+    pip3 install --upgrade pip setuptools && \
+    if [ ! -e /usr/bin/pip ]; then ln -s pip3 /usr/bin/pip ; fi && \
+    if [[ ! -e /usr/bin/python ]]; then ln -sf /usr/bin/python3 /usr/bin/python; fi && \
+    rm -r /root/.cache    
 
 WORKDIR /app
+COPY ./app /app
+USER postgres
 
-COPY app/worker.py /app/worker.py
+RUN pip install flask requests psycopg2-binary
+RUN chmod 0700 /var/lib/postgresql/data &&\
+    initdb /var/lib/postgresql/data &&\
+    echo "host all  all    0.0.0.0/0  md5" >> /var/lib/postgresql/data/pg_hba.conf &&\
+    echo "listen_addresses='*'" >> /var/lib/postgresql/data/postgresql.conf
 
-RUN pip install flask requests
 
-EXPOSE 5000
+EXPOSE 5432
+EXPOSE 80
 
-CMD ["python", "worker.py"]
+ENV DB_HOST=localhost
+ENV DB_PORT=5432
+ENV DB_NAME=db
+ENV DB_USER=node
+ENV DB_PASSWORD=password
+
+CMD ["./startup.sh"]
