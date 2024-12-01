@@ -1,22 +1,29 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response, Response
 from lib.globals import *
 from lib.database import *
-import subprocess
 import os
 
 app = Flask(__name__)
+db = None
 
 @app.route('/process', methods=['POST'])
-def process_task():
+def process_task() -> Response:
     task = request.json.get('task')
     result = f"Processed task: {task}"  # Simulated processing logic
-    return jsonify({"result": result})
+    return make_response("Success", 200)
 
-@app.route('/setup', methods=['POST'])
-def setup():
-    table = request.json.get('rows')
+@app.route('/init', methods=['POST'])
+def recieve_init() -> Response:
+    data = request.json.get('table')
+    table = Table(data.name, data.rows)
+    db.insert_rows(table)
+
+    return make_response("Success", 200)
+
 
 def init_worker() -> None:
+    global db
+
     # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
     port = os.getenv('DB_PORT', 5432)

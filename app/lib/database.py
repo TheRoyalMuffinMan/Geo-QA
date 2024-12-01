@@ -60,7 +60,9 @@ class Database:
         except Exception as e:
             print(f"Error setting up database: {e}")
 
-    
+    def insert_rows(table: Table):
+        pass
+
     def __load_schema(self) -> None:
         # Load schema
         subprocess.run(['psql', '-U', self.user, '-d', self.name, '-f', self.schema], check=True)

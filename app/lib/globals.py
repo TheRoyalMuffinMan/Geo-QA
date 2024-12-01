@@ -1,4 +1,7 @@
 from enum import Enum
+import collections
+
+Table = collections.namedtuple("Table", ["name", "rows"])
 
 POSTGRESQL_CONFIG_FILE = "/etc/postgresql/15/main/pg_hba.conf"
 
