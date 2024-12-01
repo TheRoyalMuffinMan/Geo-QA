@@ -1,21 +1,23 @@
 import time
+import subprocess
 import psycopg2
 from .globals import *
 from psycopg2 import sql
 from psycopg2.errors import DuplicateDatabase
 
 class Database:
-    def __init__(self, host: str, port: str, name: str, user: str, password: str) -> None:
+    def __init__(self, host: str, port: str, db_name: str, user: str, password: str) -> None:
         self.host = host
         self.port = port
-        self.name = name
+        self.db_name = db_name
         self.user = user
         self.password = password
         self.__postgres_wait()
         self.__postgres_setup()
+        self.__load_schema()
 
     def __repr__(self) -> str:
-        return f"Database(host={self.host},port={self.port},name={self.name},user={self.user}, password={self.password})"
+        return f"Database(host={self.host},port={self.port},db_name={self.db_name},user={self.user}, password={self.password})"
     
     def __postgres_wait(self) -> None:
         print("Waiting for PostgreSQL to start...")
@@ -47,10 +49,10 @@ class Database:
             cursor = conn.cursor()
 
             try:
-                cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.name)))
-                print(f"Database {self.name} created.")
+                cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name)))
+                print(f"Database {self.db_name} created.")
             except DuplicateDatabase:
-                print(f"Database {self.name} already exists.")
+                print(f"Database {self.db_name} already exists.")
 
             try:
                 cursor.execute(
@@ -63,13 +65,18 @@ class Database:
 
             cursor.execute(
                 sql.SQL("GRANT ALL PRIVILEGES ON DATABASE {} TO {}").format(
-                    sql.Identifier(self.name),
+                    sql.Identifier(self.db_name),
                     sql.Identifier(self.user)
                 )
             )
-            print(f"Granted ALL privileges on {self.name} to {self.user}.")
+            print(f"Granted ALL privileges on {self.db_name} to {self.user}.")
 
             cursor.close()
             conn.close()
         except Exception as e:
             print(f"Error setting up database: {e}")
+
+    
+    def __load_schema(self) -> None:
+        subprocess.run(['psql', '-U', 'postgres', '-d', self.db_name, '-f', 'schema.sql'], check=True)
+        subprocess.run(['psql', '-U', 'postgres', '-d', self.db_name, '-c', '\\dt'], check=True)
