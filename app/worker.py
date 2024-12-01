@@ -20,9 +20,9 @@ def init_worker() -> None:
     # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
     port = os.getenv('DB_PORT', 5432)
-    name = os.getenv('DB_NAME', 'db')
-    user = os.getenv('DB_USER', 'user')
-    password = os.getenv('DB_PASSWORD', 'mypassword')
+    name = os.getenv('DB_NAME', 'postgres')
+    user = os.getenv('DB_USER', 'postgres')
+    password = os.getenv('DB_PASSWORD', 'postgres')
     schema = os.getenv('DB_SCHEMA', 'schema.sql')
 
     # Initialize Database

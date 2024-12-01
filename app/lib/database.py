@@ -6,10 +6,10 @@ import psycopg2
 import time
 
 class Database:
-    def __init__(self, host: str, port: str, db_name: str, user: str, password: str, schema: str) -> None:
+    def __init__(self, host: str, port: str, name: str, user: str, password: str, schema: str) -> None:
         self.host = host
         self.port = port
-        self.db_name = db_name
+        self.name = name
         self.user = user
         self.password = password
         self.schema = schema
@@ -18,14 +18,14 @@ class Database:
         self.__load_schema()
 
     def __repr__(self) -> str:
-        return f"Database(host={self.host},port={self.port},db_name={self.db_name},user={self.user}, password={self.password})"
+        return f"Database(host={self.host},port={self.port},name={self.name},user={self.user}, password={self.password})"
     
     def __postgres_wait(self) -> None:
         print("Waiting for PostgreSQL to start...")
         while True:
             try:
                 conn = psycopg2.connect(
-                    dbname=self.db_name,
+                    dbname=self.name,
                     user=self.user,
                     password=self.password,
                     host=self.host,
@@ -40,7 +40,7 @@ class Database:
     def __postgres_db_setup(self) -> None:
         try:
             conn = psycopg2.connect(
-                dbname=self.db_name,
+                dbname=self.name,
                 user=self.user,
                 password=self.password,
                 host=self.host,
@@ -50,10 +50,10 @@ class Database:
             cursor = conn.cursor()
 
             try:
-                cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.db_name)))
-                print(f"Database {self.db_name} created.")
+                cursor.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.name)))
+                print(f"Database {self.name} created.")
             except DuplicateDatabase:
-                print(f"Database {self.db_name} already exists.")
+                print(f"Database {self.name} already exists.")
 
             cursor.close()
             conn.close()
@@ -63,7 +63,7 @@ class Database:
     
     def __load_schema(self) -> None:
         # Load schema
-        subprocess.run(['psql', '-U', self.user, '-d', self.db_name, '-f', self.schema], check=True)
+        subprocess.run(['psql', '-U', self.user, '-d', self.name, '-f', self.schema], check=True)
 
         # Verify schema is loaded in docker log
-        subprocess.run(['psql', '-U', self.user, '-d', self.db_name, '-c', '\\dt'], check=True)
+        subprocess.run(['psql', '-U', self.user, '-d', self.name, '-c', '\\dt'], check=True)

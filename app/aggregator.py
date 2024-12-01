@@ -22,9 +22,9 @@ def init_aggregator() -> None:
     # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
     port = os.getenv('DB_PORT', 5432)
-    name = os.getenv('DB_NAME', 'mydb')
-    user = os.getenv('DB_USER', 'myuser')
-    password = os.getenv('DB_PASSWORD', 'mypassword')
+    name = os.getenv('DB_NAME', 'postgres')
+    user = os.getenv('DB_USER', 'postgres')
+    password = os.getenv('DB_PASSWORD', 'postgres')
     schema = os.getenv('DB_SCHEMA', 'schema.sql')
 
     # Setup Database
@@ -50,7 +50,7 @@ def init_aggregator() -> None:
     
     # Data is in load.sql
     subprocess.run(["mv load.sql TPC-H/dbgen"], check=True, shell=True)
-    subprocess.run(["cd TPC-H/dbgen && psql -U postgres -d db -f load.sql"], check=True, shell=True)
+    subprocess.run([f"cd TPC-H/dbgen && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
     
 
 if __name__ == '__main__':
