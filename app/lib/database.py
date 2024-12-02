@@ -61,7 +61,21 @@ class Database:
             print(f"Error setting up database: {e}")
 
     def insert_rows(self, table: Table):
-        return
+        # Open cursor for insertion
+        conn = psycopg2.connect(
+            dbname=self.name,
+            user=self.user,
+            password=self.password,
+            host=self.host,
+            port=self.port
+        )
+        
+        cur = conn.cursor()
+        
+        columns = table.rows[0].keys()
+        tup_str = ','.join(['%s' for _ in columns])
+        args_str = ','.join(cur.mogrify("(%s)" % tup_str, tuple(row.values())).decode('utf-8') for row in table.rows)
+        cur.execute(f"INSERT INTO {table.name} VALUES " + args_str) 
 
     def __load_schema(self) -> None:
         # Load schema
@@ -71,7 +85,7 @@ class Database:
         subprocess.run(['psql', '-U', self.user, '-d', self.name, '-c', '\\dt'], check=True)
         
     
-    def fetch_all(self, table_name: str) -> list[dict]:
+    def fetch_all(self, table_name: str, batch_size: int = 10000) -> list[dict]:
         try:
             conn = psycopg2.connect(
                 dbname=self.name,
@@ -85,18 +99,29 @@ class Database:
             # Fetch all rows
             query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(table_name))
             cursor.execute(query)
-            rows = cursor.fetchall()
+            # rows = cursor.fetchall()
+            
+            while True:
+                rows = cursor.fetchmany(batch_size)
+                if not rows:
+                    break
+
+                # Get column names
+                if 'colnames' not in locals():
+                    colnames = [desc[0] for desc in cursor.description]
+
+                # Yield rows as dictionaries
+                yield [dict(zip(colnames, map(str, list(row)))) for row in rows]
             
             # Get column names
-            colnames = [desc[0] for desc in cursor.description]
+            # colnames = [desc[0] for desc in cursor.description]
             
-            # Convert to list of dictionaries
-            result = [dict(zip(colnames, map(str, list(row)))) for row in rows]
+            # # Convert to list of dictionaries
+            # result = [dict(zip(colnames, map(str, list(row)))) for row in rows]
             
             cursor.close()
             conn.close()
             
-            return result
         except Exception as e:
             print(f"Error fetching data from {table_name}: {e}")
             return []

@@ -15,11 +15,8 @@ def process_task() -> Response:
 @app.route('/init', methods=['POST'])
 def recieve_init() -> Response:
     data = request.json
-    print(data.keys())
     table = Table(data["name"], data["rows"])
     db.insert_rows(table)
-    print(table.name)
-    print(table.rows[0])
     return make_response("Success", 200)
 
 

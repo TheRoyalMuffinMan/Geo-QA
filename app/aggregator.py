@@ -6,6 +6,9 @@ import subprocess
 import requests
 
 app = Flask(__name__)
+
+app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
+
 db = None
 tables = ["customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"]
 
@@ -21,12 +24,17 @@ def send_task():
     return jsonify(results)
 
 def send_init():
-    for worker_url in WORKERS:
-        for table in tables:
-            response = requests.post(f"{worker_url}/init", json={"name": table, "rows": db.fetch_all(table)})
+    worker_id = 0
+    for table in tables:
+        for batch in db.fetch_all(table):
+            response = requests.post(
+                f"{WORKERS[worker_id]}/init", 
+                json={"name": table, "rows": batch}
+            )
             print(response)
             if response.status_code != 200:
                 print("Error sending init to worker")
+            worker_id = (worker_id + 1) % len(WORKERS)
 
 def init_aggregator() -> Database:
     global db
