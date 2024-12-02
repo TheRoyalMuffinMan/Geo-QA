@@ -69,13 +69,17 @@ class Database:
             host=self.host,
             port=self.port
         )
-        
         cur = conn.cursor()
         
         columns = table.rows[0].keys()
         tup_str = ','.join(['%s' for _ in columns])
         args_str = ','.join(cur.mogrify("(%s)" % tup_str, tuple(row.values())).decode('utf-8') for row in table.rows)
         cur.execute(f"INSERT INTO {table.name} VALUES " + args_str) 
+
+        conn.commit()
+
+        cur.close()
+        conn.close()
 
     def __load_schema(self) -> None:
         # Load schema

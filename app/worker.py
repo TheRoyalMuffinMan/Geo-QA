@@ -17,6 +17,7 @@ def recieve_init() -> Response:
     data = request.json
     table = Table(data["name"], data["rows"])
     db.insert_rows(table)
+    print(table.name)
     return make_response("Success", 200)
 
 
