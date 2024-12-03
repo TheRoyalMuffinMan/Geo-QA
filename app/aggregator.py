@@ -4,15 +4,15 @@ from lib.database import *
 import os
 import subprocess
 import requests
+import configparser
 
 app = Flask(__name__)
 
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
 db = None
+workers = []
 tables = ["customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"]
-
-WORKERS = ["http://worker_node_1:5001", "http://worker_node_2:5001"]
 
 @app.route('/send_task', methods=['POST'])
 def send_task():
@@ -20,7 +20,7 @@ def send_task():
     tables = request.json.get('tables')
     type = request.json.get('type')
     results = {}
-    for worker_url in WORKERS:
+    for worker_url in workers:
         if type == "ResponseType.DATA":
             response = requests.post(f"{worker_url}/process_data", 
                                      json={
@@ -58,16 +58,16 @@ def send_init():
     for table in tables:
         for batch in db.fetch_all(table):
             response = requests.post(
-                f"{WORKERS[worker_id]}/init", 
+                f"{workers[worker_id]}/init", 
                 json={"name": table, "rows": batch}
             )
             print(response)
             if response.status_code != 200:
                 print("Error sending init to worker")
-            worker_id = (worker_id + 1) % len(WORKERS)
+            worker_id = (worker_id + 1) % len(workers)
 
 def init_aggregator() -> Database:
-    global db
+    global db, workers
     
     # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
@@ -76,6 +76,15 @@ def init_aggregator() -> Database:
     user = os.getenv('DB_USER', 'postgres')
     password = os.getenv('DB_PASSWORD', 'postgres')
     schema = os.getenv('DB_SCHEMA', 'schema.sql')
+
+    # Determines how make workers were generated with system-nodes.sh
+    # References the config.ini file to figure this out
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    number_of_workers = int(config['AGGREGATOR']['number_of_workers'])
+    worker_port = int(config['AGGREGATOR']['port'])
+    for w in range(1, number_of_workers + 1):
+        workers.append(DEFAULT_WORKER_NAME + f"{w}:{worker_port}")
 
     # Setup Database
     db = Database(host, port, name, user, password, schema)
@@ -89,7 +98,6 @@ def init_aggregator() -> Database:
     # Data is in load.sql
     subprocess.run(["mv load.sql TPC-H/dbgen"], check=True, shell=True)
     subprocess.run([f"cd TPC-H/dbgen && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
-    
     
 def main():
     init_aggregator()
