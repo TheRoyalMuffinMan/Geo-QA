@@ -13,3 +13,4 @@ class AggregatorMode(Enum):
 class ResponseType(Enum):
     RESULTS = 0
     DATA = 1
+    QUERY = 2
