@@ -2,15 +2,43 @@ from flask import Flask, request, jsonify, make_response, Response
 from lib.globals import *
 from lib.database import *
 import os
+import requests
 
 app = Flask(__name__)
 db = None
 
-@app.route('/process', methods=['POST'])
-def process_task() -> Response:
-    task = request.json.get('task')
-    result = f"Processed task: {task}"  # Simulated processing logic
-    return make_response("Success", 200)
+@app.route('/process_query', methods=['POST'])
+def process_query() -> Response:
+    query = request.json.get('query')
+    agg_url = request.json.get('agg_url')
+    try: 
+        results = db.execute_query(query)
+        response = requests.post(agg_url, json={"results": results})
+        return make_response("Success", 200)
+    
+    except Exception as e:
+        return make_response(str(e), 500)
+        
+    
+@app.route('/process_data', methods=['POST'])
+def process_data() -> Response:
+    tables = request.json.get('tables')
+    agg_url = request.json.get('agg_url')
+    try:
+        for table in tables:
+            for batch in db.fetch_all(table):
+                response = requests.post(
+                    agg_url, 
+                    json={"name": table, "rows": batch}
+                )
+                if response.status_code != 200:
+                    print("Error sending data to aggregator")
+                    
+        return make_response("Success", 200)
+    
+    except Exception as e:
+        return make_response(str(e), 500)
+    
 
 @app.route('/init', methods=['POST'])
 def recieve_init() -> Response:

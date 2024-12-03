@@ -89,7 +89,7 @@ class Database:
         subprocess.run(['psql', '-U', self.user, '-d', self.name, '-c', '\\dt'], check=True)
         
     
-    def fetch_all(self, table_name: str, batch_size: int = 10000) -> list[dict]:
+    def fetch_all(self, table_name: str, batch_size: int = 30000) -> list[dict]:
         try:
             conn = psycopg2.connect(
                 dbname=self.name,
@@ -129,3 +129,30 @@ class Database:
         except Exception as e:
             print(f"Error fetching data from {table_name}: {e}")
             return []
+
+    def execute_query(self, query: str) -> dict:
+        try:
+            conn = psycopg2.connect(
+                dbname=self.name,
+                user=self.user,
+                password=self.password,
+                host=self.host,
+                port=self.port
+            )
+            cursor = conn.cursor()
+            
+            # Execute query
+            cursor.execute(query)
+            
+            rows = cursor.fetchall()
+            colnames = [desc[0] for desc in cursor.description]
+            result = [dict(zip(colnames, map(str, list(row)))) for row in rows]
+            
+            cursor.close()
+            conn.close()
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error executing query: {e}")
+            return {}

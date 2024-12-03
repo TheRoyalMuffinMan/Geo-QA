@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from lib.globals import *
 from lib.database import *
 import os
@@ -16,12 +16,42 @@ WORKERS = ["http://worker_node_1:5001", "http://worker_node_2:5001"]
 
 @app.route('/send_task', methods=['POST'])
 def send_task():
-    task = request.json.get('task', 'default task')
+    query = request.json.get('query')
+    tables = request.json.get('tables')
+    type = request.json.get('type')
     results = {}
     for worker_url in WORKERS:
-        response = requests.post(f"{worker_url}/process", json={"task": task})
-        results[worker_url] = response.json()
+        if type == "ResponseType.DATA":
+            response = requests.post(f"{worker_url}/process_data", 
+                                     json={
+                                        "tables": tables,
+                                        "agg_url": f"http://aggregator:5001/receive_data"
+                                        })
+        else:
+            response = requests.post(f"{worker_url}/process_query", 
+                                     json={
+                                        "query": query,
+                                        "agg_url": f"http://aggregator:5001/receive_result"
+                                        })
+        # results[worker_url] = response.json()
+        # print(response.json())
     return jsonify(results)
+
+@app.route('/receive_result', methods=['POST'])
+def receive_result():
+    data = request.json
+    print(data["results"])
+    # some combination of results
+    
+    return make_response("Success", 200)
+
+@app.route('/receive_data', methods=['POST'])
+def receive_data():
+    table = request.json.get('name')
+    rows = request.json.get('rows')
+    # Insert data into database
+    db.insert_rows(Table(table, rows))
+    return make_response("Success", 200)
 
 def send_init():
     worker_id = 0
