@@ -156,3 +156,26 @@ class Database:
         except Exception as e:
             print(f"Error executing query: {e}")
             return {}
+        
+    def delete_rows(self, table_name: str) -> None:
+        try:
+            conn = psycopg2.connect(
+                dbname=self.name,
+                user=self.user,
+                password=self.password,
+                host=self.host,
+                port=self.port
+            )
+            cursor = conn.cursor()
+            
+            # Delete all rows
+            query = sql.SQL("TRUNCATE TABLE {}").format(sql.Identifier(table_name))
+            cursor.execute(query)
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            
+        except Exception as e:
+            print(f"Error deleting rows from {table_name}: {e}")
+            return {}

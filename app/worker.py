@@ -11,9 +11,13 @@ db = None
 def process_query() -> Response:
     query = request.json.get('query')
     agg_url = request.json.get('agg_url')
+    query_id = request.json.get('query_id')
+    worker_id = request.json.get('worker_id')
     try: 
         results = db.execute_query(query)
-        response = requests.post(agg_url, json={"results": results})
+        response = requests.post(agg_url, json={"results": results,
+                                                "query_id": query_id,
+                                                "worker_id": worker_id})
         return make_response("Success", 200)
     
     except Exception as e:

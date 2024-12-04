@@ -5,6 +5,7 @@ import os
 import subprocess
 import requests
 import configparser
+import json
 
 app = Flask(__name__)
 
@@ -12,6 +13,7 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
 db = None
 workers = []
+worker_ids = []
 tables = ["customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"]
 
 @app.route('/send_task', methods=['POST'])
@@ -19,6 +21,7 @@ def send_task():
     query = request.json.get('query')
     tables = request.json.get('tables')
     type = request.json.get('type')
+    query_id = request.json.get('query_id')
     results = {}
     for worker_url in workers:
         if type == "ResponseType.DATA":
@@ -31,17 +34,30 @@ def send_task():
             response = requests.post(f"{worker_url}/process_query", 
                                      json={
                                         "query": query,
-                                        "agg_url": f"http://aggregator:5001/receive_result"
+                                        "agg_url": f"http://aggregator:5001/receive_result",
+                                        "query_id": query_id,
+                                        "worker_id": worker_ids[workers.index(worker_url)]
                                         })
-        # results[worker_url] = response.json()
-        # print(response.json())
+    if type == "ResponseType.DATA":
+        # Run the query on the aggregator
+        results = db.execute_query(query)
+        
+        # Write results to json file with query_id
+        with open(f"query-results/{query_id}_aggregator.json", "w") as f:
+            f.write(json.dumps(results))
+        
     return jsonify(results)
 
 @app.route('/receive_result', methods=['POST'])
 def receive_result():
     data = request.json
-    print(data["results"])
-    # some combination of results
+    results = data["results"]
+    query_id = data["query_id"]
+    worker_id = data["worker_id"]
+    
+    # write results to json file with query_id
+    with open(f"query-results/{query_id}_worker_{worker_id}.json", "w") as f:
+        f.write(json.dumps(results))
     
     return make_response("Success", 200)
 
@@ -56,18 +72,31 @@ def receive_data():
 def send_init():
     worker_id = 0
     for table in tables:
-        for batch in db.fetch_all(table):
-            response = requests.post(
-                f"{workers[worker_id]}/init", 
-                json={"name": table, "rows": batch}
-            )
-            print(response)
-            if response.status_code != 200:
-                print("Error sending init to worker")
-            worker_id = (worker_id + 1) % len(workers)
+        if table == "lineitem":
+            for batch in db.fetch_all(table):
+                response = requests.post(
+                    f"{workers[worker_id]}/init", 
+                    json={"name": table, "rows": batch}
+                )
+                print(response)
+                if response.status_code != 200:
+                    print("Error sending init to worker")
+                worker_id = (worker_id + 1) % len(workers)
+        else:
+            for worker_url in workers:
+                for batch in db.fetch_all(table):
+                    response = requests.post(
+                        f"{worker_url}/init", 
+                        json={"name": table, "rows": batch}
+                    )
+                    if response.status_code != 200:
+                        print("Error sending init to worker")
+                        
+    # Remove rows from database
+    db.delete_rows("lineitem")
 
 def init_aggregator() -> Database:
-    global db, workers
+    global db, workers, worker_ids
     
     # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
@@ -85,6 +114,7 @@ def init_aggregator() -> Database:
     worker_port = int(config['AGGREGATOR']['port'])
     for w in range(1, number_of_workers + 1):
         workers.append(DEFAULT_WORKER_NAME + f"{w}:{worker_port}")
+        worker_ids.append(str(w))
 
     # Setup Database
     db = Database(host, port, name, user, password, schema)
