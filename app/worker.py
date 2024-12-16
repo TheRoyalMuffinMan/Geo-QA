@@ -3,8 +3,11 @@ from lib.globals import *
 from lib.database import *
 import os
 import requests
+import configparser
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
+worker = None
 db = None
 
 @app.route('/process_query', methods=['POST'])
@@ -44,17 +47,34 @@ def process_data() -> Response:
         return make_response(str(e), 500)
     
 
-@app.route('/init', methods=['POST'])
-def recieve_init() -> Response:
-    data = request.json
-    table = Table(data["name"], data["rows"])
-    db.insert_rows(table)
-    print(table.name)
+@app.route('/receive_init', methods=['POST'])
+def receive_init() -> Response:
+    global worker
+
+    # Initialize worker instance
+    worker.worker_type = WorkerType(request.json.get("worker_type"))
+    files = request.json.get("files")
+    worker.leader_address = request.json.get("leader_address")
+    
+    # Get mountpoint
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    mount_point = config["SHARED"]["mount_point"]
+
+    # Generate a load file for all the tables
+    file = open(f'{mount_point}/load.sql', 'w')
+    for table in files:
+        file.write(f"\copy {table} FROM '{files[table]}' DELIMITER '|' CSV;\n")
+    file.close()
+
+    # Load tables
+    subprocess.run([f"cd {mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
+
     return make_response("Success", 200)
 
 
 def init_worker() -> None:
-    global db
+    global worker, db
 
     # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
@@ -66,6 +86,9 @@ def init_worker() -> None:
 
     # Initialize Database
     db = Database(host, port, name, user, password, schema)
+
+    # Initialize worker with basic init information
+    worker = Worker()
 
 def main() -> None:
     init_worker()

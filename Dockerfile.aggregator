@@ -1,6 +1,19 @@
+# Installs postgres:15.0-alpine image
 FROM postgres:15.0-alpine
+
+# Installs g++ compiler and alpine-sdk build tool
 RUN apk add --update --no-cache g++ alpine-sdk
+
+# Install most recent version of python3-dev
 RUN apk --no-cache add python3-dev
+
+# 1. Install most recent version of python3
+# 2. Ensures pip is installed,
+# 3. Removes the ensurepip to save on space
+# 4. Installs setuptools,
+# 5. Symbolic links pip <=> pip3
+# 6. Symbolic links python <=> python3
+# 7. Removes pip cache to save on space
 RUN apk add --no-cache python3 && \
     python3 -m ensurepip && \
     rm -r /usr/lib/python*/ensurepip && \
@@ -9,20 +22,30 @@ RUN apk add --no-cache python3 && \
     if [[ ! -e /usr/bin/python ]]; then ln -sf /usr/bin/python3 /usr/bin/python; fi && \
     rm -r /root/.cache    
 
+# Install flask, requests and psycopg2 libraries through pip
+RUN pip install flask requests psycopg2-binary
+
+# Sets working directory for docker container
 WORKDIR /app
+
+# Copies entire app directory (needs all files for aggregator)
 COPY ./app /app
 
+# Generate the shared mount point on aggregator
+RUN mkdir -p /app/shared
+
+# Grant read/write access to the /app directory for the postgres user
 RUN chown -R postgres:postgres /app && \
     chmod -R 755 /app
-USER postgres
+
+# Swaps user to postgres to change configurations and access database
 USER postgres
 
-RUN pip install flask requests psycopg2-binary
+# Modifies postgres configurations (initializes db and forces md5 password verification)
 RUN chmod 0700 /var/lib/postgresql/data &&\
     initdb /var/lib/postgresql/data &&\
     echo "host all  all    0.0.0.0/0  md5" >> /var/lib/postgresql/data/pg_hba.conf &&\
     echo "listen_addresses='*'" >> /var/lib/postgresql/data/postgresql.conf
-
 
 EXPOSE 5432
 EXPOSE 80

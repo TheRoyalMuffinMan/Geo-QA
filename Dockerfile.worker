@@ -32,7 +32,11 @@ WORKDIR /app
 COPY ./app/startup.sh /app/startup.sh
 COPY ./app/worker.py /app/worker.py
 COPY ./app/schema.sql /app/schema.sql
+COPY ./app/config.ini /app/config.ini
 COPY ./app/lib /app/lib
+
+# Generate the shared mount point on aggregator
+RUN mkdir -p /app/shared
 
 # Grant read/write access to the /app directory for the postgres user
 RUN chown -R postgres:postgres /app && \
