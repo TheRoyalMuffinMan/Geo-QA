@@ -52,11 +52,10 @@ def initialize_system(api_url: str, endpoint: str, partition: list[str], non_par
     return
 
 
-def send_sql_query(api_url: str, query_type: str, tables: str, sql_query: str, query_id: str) -> dict:
+def send_sql_query(api_url: str, tables: str, sql_query: str, query_id: str) -> dict:
     try:
         # Prepare JSON payload
         payload = {
-            "type": query_type,
             "tables": tables,
             "query": sql_query,
             "query_id": query_id
@@ -116,7 +115,32 @@ def main() -> None:
 
     # Initialize the system with command line arguments
     initialize_system(API_URL, INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
-
+    
+    # Prompt the user for queries 
+    query_count = 0
+    while True:
+        # Get the file containing the SQL query from the user
+        print("Enter a SQL query file: ", end="")
+        query_file = input()
+        try:
+            sql_query = open(query_file).read()
+        except Exception as e:
+            print(f"Error reading file: {e}")
+            continue
+        
+        # Get the tables that the query will be run on
+        print("Enter the tables the query will be run on: ", end="")
+        tables = input().split()
+        for table in tables:
+            if table not in TPC_H_TABLES:
+                print("Invalid table entered")
+                continue
+        
+        # Run the query
+        response = send_sql_query(API_URL + TASK_ENDPOINT, tables, sql_query, str(query_count + 1))
+        print(response)
+        
+        query_count += 1
 
 if __name__ == "__main__":
     main()
