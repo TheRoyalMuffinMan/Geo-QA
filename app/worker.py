@@ -55,21 +55,81 @@ def receive_init() -> Response:
     worker.worker_type = WorkerType(request.json.get("worker_type"))
     files = request.json.get("files")
     worker.leader_address = request.json.get("leader_address")
+    worker.follower_addresses = request.json.get("follower_addresses")
     
     # Get mountpoint
     config = configparser.ConfigParser()
     config.read('config.ini')
-    mount_point = config["SHARED"]["mount_point"]
+    worker.mount_point = config["SHARED"]["mount_point"]
 
     # Generate a load file for all the tables
-    file = open(f'{mount_point}/load.sql', 'w')
+    file = open(f'{worker.mount_point }/load.sql', 'w')
     for table in files:
+        # Save the tables that are being partitioned (leader-follower)
+        if "worker_" in files[table]:
+            worker.partition_tables.append(files[table])
+
         file.write(f"\copy {table} FROM '{files[table]}' DELIMITER '|' CSV;\n")
     file.close()
 
     # Load tables
-    subprocess.run([f"cd {mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
+    subprocess.run([f"cd {worker.mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
 
+    return make_response("Success", 200)
+
+
+
+@app.route('/leader_data', methods=['POST'])
+def leader_data() -> Response:
+    global worker
+    tables = request.json.get('tables')
+    agg_url = request.json.get('agg_url')
+
+    for follower_url in worker.follower_addresses:
+        response = requests.post(f"{follower_url}/process_data", 
+                            json={
+                            "tables": tables,
+                            "agg_url": agg_url
+                            })
+        
+        if response.status_code != 200:
+            print("Issue sending request to follower")
+    
+    return make_response("Success", 200)
+
+
+@app.route('/follower_sync', methods=['POST'])
+def follower_sync() -> Response:
+    global worker
+    files = {path.split('/')[-1].replace('.tbl', '').split('_')[-1]: path for path in worker.partition_tables}
+    return jsonify({"files": files}), 200
+
+
+@app.route('/leader_results', methods=['POST'])
+def leader_results() -> Response:
+    global worker
+    query = request.json.get('query')
+    agg_url = request.json.get('agg_url')
+    query_id = request.json.get('query_id')
+    worker_id = request.json.get('worker_id')
+
+    for follower_url in worker.follower_addresses:
+        response = requests.post(f"{follower_url}/follower_sync", json={})
+        if response.status_code != 200:
+            print("Issue sending request to follower")
+
+        files = response.json()['files']
+        file = open(f'{worker.mount_point}/load.sql', 'w')
+        for table in files:
+            file.write(f"\copy {table} FROM '{files[table]}' DELIMITER '|' CSV;\n")
+        file.close()
+        # Load tables
+        subprocess.run([f"cd {worker.mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
+        
+    results = db.execute_query(query)
+    response = requests.post(agg_url, json={"results": results,
+                                            "query_id": query_id,
+                                            "worker_id": worker_id})
     return make_response("Success", 200)
 
 

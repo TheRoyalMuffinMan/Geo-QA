@@ -55,6 +55,7 @@ def receive_init() -> Response:
                 aggregator.leader_ids.append(aggregator.worker_ids[i])
                 aggregator.leaders.append(aggregator.workers[i])
                 messages[aggregator.worker_ids[i]].worker_type = WorkerType.LEADER
+                messages[aggregator.worker_ids[i]].follower_addresses.extend([aggregator.workers[i - 1], aggregator.workers[i + 1]])
 
                 # Begin tracking followers
                 aggregator.follower_ids.extend([aggregator.worker_ids[i - 1], aggregator.worker_ids[i + 1]])
@@ -189,7 +190,8 @@ def receive_init() -> Response:
         payload = {
             "worker_type": messages[worker].worker_type.value,
             "files": tables,
-            "leader_address": messages[worker].leader_address
+            "leader_address": messages[worker].leader_address,
+            "follower_addresses": messages[worker].follower_addresses
         }
         response = requests.post(endpoint, json=payload)
 
@@ -204,25 +206,63 @@ def receive_init() -> Response:
 def send_task():
     query = request.json.get('query')
     tables = request.json.get('tables')
-    type = request.json.get('type')
     query_id = request.json.get('query_id')
     results = {}
-    for worker_url in workers:
-        if type == "ResponseType.DATA":
-            response = requests.post(f"{worker_url}/process_data", 
-                                     json={
-                                        "tables": tables,
-                                        "agg_url": f"http://aggregator:5001/receive_data"
-                                        })
-        else:
-            response = requests.post(f"{worker_url}/process_query", 
-                                     json={
-                                        "query": query,
-                                        "agg_url": f"http://aggregator:5001/receive_result",
-                                        "query_id": query_id,
-                                        "worker_id": worker_ids[workers.index(worker_url)]
-                                        })
-    if type == "ResponseType.DATA":
+
+    # Handles default architecture
+    # LOCAL AND DEFAULT
+    # DISTRIBUTED AND DEFAULT
+    if aggregator.arch == AggregatorArchitecture.DEFAULT:
+        for worker_url in aggregator.workers:
+            response = None
+
+            if aggregator.mode == AggregatorMode.LOCAL:
+                response = requests.post(f"{worker_url}/process_data", 
+                                json={
+                                "tables": tables,
+                                "agg_url": f"http://aggregator:5001/receive_data"
+                                })
+
+            if aggregator.mode == AggregatorMode.DISTRIBUTED:
+                response = requests.post(f"{worker_url}/process_query", 
+                                json={
+                                "query": query,
+                                "agg_url": f"http://aggregator:5001/receive_result",
+                                "query_id": query_id,
+                                "worker_id": aggregator.worker_ids[aggregator.workers.index(worker_url)]
+                                })
+            
+            if response.status_code != 200:
+                print("Issue sending request to worker")
+    
+    # Handles leader-follower architecture
+    # LOCAL AND FOLLOWER
+    # DISTRIBUTED AND FOLLOWER
+    if aggregator.arch == AggregatorArchitecture.FOLLOWER:
+        for leader_url in aggregator.leaders:
+            response = None
+
+            if aggregator.mode == AggregatorMode.LOCAL:
+                response = requests.post(f"{leader_url}/leader_data", 
+                                json={
+                                "tables": tables,
+                                "agg_url": f"http://aggregator:5001/receive_data"
+                                })
+
+            if aggregator.mode == AggregatorMode.DISTRIBUTED:
+                response = requests.post(f"{leader_url}/leader_results", 
+                                json={
+                                "query": query,
+                                "agg_url": f"http://aggregator:5001/receive_result",
+                                "query_id": query_id,
+                                "worker_id": aggregator.worker_ids[aggregator.workers.index(leader_url)]
+                                })
+            
+            if response.status_code != 200:
+                print("Issue sending request to leader")
+
+
+    if aggregator.mode == AggregatorMode.LOCAL:
         # Run the query on the aggregator
         results = db.execute_query(query)
         

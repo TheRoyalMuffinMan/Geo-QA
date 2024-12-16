@@ -32,16 +32,19 @@ class InitializationMessage:
             self,
             worker_type: int,
             insertion_tables: list[str] = None,
-            leader_address: str = None
+            leader_address: str = None,
+            follower_addresses: list[str] = None
     ) -> None:
         self.worker_type = worker_type
         self.insertion_tables = insertion_tables if insertion_tables is not None else []
         self.leader_address = leader_address if leader_address is not None else ""
+        self.follower_addresses = follower_addresses if follower_addresses is not None else []
     
     def __repr__(self):
         return (f"InitializationMessage(insertion_tables={self.insertion_tables}, "
                 f"leader_address='{self.leader_address}', "
-                f"worker_type={self.worker_type})")
+                f"worker_type={self.worker_type}, "
+                f"follower_addresses={self.follower_addresses})")
 
 class Aggregator:
     def __init__(
@@ -95,14 +98,20 @@ class Worker:
             self,
             mount_point: str = None,
             worker_type: WorkerType = WorkerType.NOT_SET,
-            leader_address: str = None
+            leader_address: str = None,
+            follower_addresses: list[str] = None,
+            partition_tables: list[str] = None
     ) -> None:
         self.mount_point = mount_point if mount_point is not None else ""
         self.worker_type = worker_type
         self.leader_address = leader_address if leader_address is not None else ""
+        self.follower_addresses = follower_addresses if follower_addresses is not None else []
+        self.partition_tables = partition_tables if partition_tables is not None else []
     
 
     def __repr__(self):
         return (f"Worker(mount_point='{self.mount_point}', "
                 f"worker_type={self.worker_type}, "
-                f"leader_address='{self.leader_address}')")
+                f"leader_address='{self.leader_address}'"
+                f"follower_addresses={self.follower_addresses}"
+                f"partition_tables={self.partition_tables}")
