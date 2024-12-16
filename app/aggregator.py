@@ -49,7 +49,77 @@ def receive_init() -> Response:
     # Only power of 3 node counts are supported
     if aggregator.arch == AggregatorArchitecture.FOLLOWER:
         if len(aggregator.workers) % 3 == 0:
-            pass
+            # Get all the ids that will correlate to the leaders
+            for i in range(1, len(aggregator.worker_ids) - 1, 3):
+                # Begin tracking leader
+                aggregator.leader_ids.append(aggregator.worker_ids[i])
+                aggregator.leaders.append(aggregator.workers[i])
+                messages[aggregator.worker_ids[i]].worker_type = WorkerType.LEADER
+
+                # Begin tracking followers
+                aggregator.follower_ids.extend([aggregator.worker_ids[i - 1], aggregator.worker_ids[i + 1]])
+                aggregator.followers.extend([aggregator.workers[i - 1], aggregator.workers[i + 1]]) 
+
+                # Assign address to the two followers
+                messages[aggregator.worker_ids[i - 1]].leader_address = aggregator.workers[i]
+                messages[aggregator.worker_ids[i - 1]].worker_type = WorkerType.FOLLOWER
+                messages[aggregator.worker_ids[i + 1]].leader_address = aggregator.workers[i]
+                messages[aggregator.worker_ids[i + 1]].worker_type = WorkerType.FOLLOWER
+
+            # Being splitting on all valid partitioned tables (only for followers)
+            for table in aggregator.partition:
+                # To save time on initialization, we will split the table files into smaller files
+                file_path = f"{mount_point}/{table}.tbl"
+                
+                # Read number of lines in the file
+                with open(file_path, 'r') as file:
+                    total_lines = sum(1 for _ in file)
+
+                # Calculate the number of lines each follower should process
+                lines_per_follower = total_lines // len(aggregator.followers)
+                # Handle cases where the lines are not evenly divisible
+                remainder = total_lines % len(aggregator.followers)
+
+                # Define files for each follower
+                follower_file_paths = {id: f'{mount_point}/worker_{id}_{table}.tbl' for id in aggregator.follower_ids}
+                for id in follower_file_paths:
+                    open(follower_file_paths[id], 'w').close()
+                
+                # Begin splitting process
+                with open(file_path, 'r') as file:
+                    lines = file.readlines()
+                    
+                    start_line = 0
+                    for pos in range(len(aggregator.followers)):
+                        end_line = start_line + lines_per_follower + (remainder if pos == len(aggregator.followers) - 1 else 0)
+                        follower_file = follower_file_paths[aggregator.follower_ids[pos]]
+
+                        # Write the assigned lines to the follower's file
+                        with open(follower_file, 'w') as follower_file:
+                            for line_num in range(start_line, end_line):
+                                follower_file.write(lines[line_num])
+                        
+                        start_line = end_line
+                
+                # Add partition-ed table file to be inserted for followers
+                for id in aggregator.follower_ids:
+                    messages[id].insertion_tables.append(follower_file_paths[id])
+
+                print(f"Data has been split into {len(aggregator.followers)} files: {follower_file_paths}")
+
+            # Add non-partitioned tables to leaders
+            if aggregator.mode == AggregatorMode.DISTRIBUTED:      
+                for id in aggregator.leader_ids:
+                    for table in aggregator.non_partition:
+                        messages[id].insertion_tables.append(f'{mount_point}/{table}.tbl')
+
+            # Since queries will be processed locally, we will insert non-partitioned tables
+            if aggregator.mode == AggregatorMode.LOCAL:
+                file = open(f'{mount_point}/load.sql', 'w')
+                for table in aggregator.non_partition:
+                    file.write(f"\copy {table} FROM '{mount_point}/{table}.tbl' DELIMITER '|' CSV;\n")
+                file.close()
+                subprocess.run([f"cd {mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
         else:
             aggregator.arch = AggregatorArchitecture.DEFAULT
 
@@ -110,7 +180,8 @@ def receive_init() -> Response:
             file.close()
             subprocess.run([f"cd {mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
 
-    
+    print(f"Messages: {messages}")
+
     # Send out initialization commands to all workers
     for worker in messages:
         endpoint = aggregator.workers[int(worker) - 1] + "/receive_init"
@@ -127,7 +198,6 @@ def receive_init() -> Response:
     
     aggregator.initialized = True
     return make_response("Success", 200)
-
 
 
 @app.route('/send_task', methods=['POST'])

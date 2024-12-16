@@ -53,7 +53,11 @@ class Aggregator:
             non_partition: list[str] = None, 
             mode: AggregatorMode = AggregatorMode.NOT_SET,
             arch: AggregatorArchitecture = AggregatorArchitecture.NOT_SET,
-            initialized: bool = False
+            initialized: bool = False,
+            leader_ids: list[str] = None,
+            leaders: list[str] = None,
+            follower_ids: list[str] = None,
+            followers: list[str] = None
     ) -> None:
         self.mount_point = mount_point
         self.workers = workers
@@ -63,16 +67,28 @@ class Aggregator:
         self.mode = mode
         self.arch = arch
         self.initialized = initialized
+        self.leader_ids = leader_ids if leader_ids is not None else []
+        self.leaders = leaders if leaders is not None else []
+        self.follower_ids = follower_ids if follower_ids is not None else []
+        self.followers = followers if followers is not None else []
 
     def __repr__(self):
-        return (f"Aggregator(mount_point={self.mount_point!r}, "
-                f"workers={self.workers!r}, "
-                f"worker_ids={self.worker_ids!r}, "
-                f"partition={self.partition!r}, "
-                f"non_partition={self.non_partition!r}, "
-                f"mode={self.mode!r}, "
-                f"arch={self.arch!r}, "
-                f"initialized={self.initialized!r}")
+        return (
+            f"Aggregator(\n"
+            f"  mount_point={self.mount_point!r},\n"
+            f"  workers={self.workers!r},\n"
+            f"  worker_ids={self.worker_ids!r},\n"
+            f"  partition={self.partition!r},\n"
+            f"  non_partition={self.non_partition!r},\n"
+            f"  mode={self.mode!r},\n"
+            f"  arch={self.arch!r},\n"
+            f"  initialized={self.initialized!r},\n"
+            f"  leader_ids={self.leader_ids!r},\n"
+            f"  leaders={self.leaders!r},\n"
+            f"  follower_ids={self.follower_ids!r},\n"
+            f"  followers={self.followers!r}\n"
+            f")"
+        )
     
 class Worker:
     def __init__(

@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser(description="Manager program that controls node
 parser.add_argument(
     '-p', '--partition', nargs='+', 
     help=('<Required> List of tables in TPC-H set that will be partitioned, '
-          'possible tables: ["customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"]'),
+          'possible tables (ex): customer lineitem nation orders part partsupp region supplier'),
     required=True
 )
 parser.add_argument('-a', '--arch', type=int, help='<Required> Nodes architecture (0:DEFAULT|1:FOLLOWER)', required=True)
