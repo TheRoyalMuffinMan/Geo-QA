@@ -1,10 +1,22 @@
 from enum import Enum
+import argparse
 import requests
 import sys
 
+TPC_H_TABLES = {"customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"}
 API_URL = "http://localhost:5001"
 INITIALIZATION_ENDPOINT = "/receive_init"
 TASK_ENDPOINT = "/send_task"
+
+parser = argparse.ArgumentParser(description="Manager program that controls nodes setup and queries")
+parser.add_argument(
+    '-p', '--partition', nargs='+', 
+    help=('<Required> List of tables in TPC-H set that will be partitioned, '
+          'possible tables: ["customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"]'),
+    required=True
+)
+parser.add_argument('-a', '--arch', type=int, help='<Required> Nodes architecture (0:DEFAULT|1:FOLLOWER)', required=True)
+parser.add_argument('-m', '--mode', type=int, help='<Required> Nodes mode (0:LOCAL|1:DISTRIBUTED)', required=True)
 
 class AggregatorMode(Enum):
     LOCAL = 0
@@ -17,7 +29,7 @@ class AggregatorArchitecture(Enum):
     NOT_SET = 2
 
 # Processes initialization of the system
-def send_init(api_url: str, endpoint: str, partition: list[str], non_partition: list[str], arch: AggregatorArchitecture, mode: AggregatorMode) -> None:
+def initialize_system(api_url: str, endpoint: str, partition: list[str], non_partition: list[str], arch: AggregatorArchitecture, mode: AggregatorMode) -> None:
     # Prepare JSON payload
     payload = {
         "partition": partition,
@@ -31,9 +43,11 @@ def send_init(api_url: str, endpoint: str, partition: list[str], non_partition: 
     response = requests.post(api_url + endpoint, json=payload, headers=headers)
     
     # Check for response status
-    response.raise_for_status()
     if response.status_code != 200:
-        sys.exit("Error with initialization")
+        if response.status_code == 201:
+            print("System already initialized")
+        else:
+            sys.exit("Error with initialization")
     
     return
 
@@ -80,16 +94,28 @@ def send_sql_query(api_url: str, query_type: str, tables: str, sql_query: str, q
 # # docker cp <container_id>:/app/query-results ./
 # subprocess.run(["docker", "cp", "aggregator:/app/query-results", "./"])
 
-
-
+# Verify the arguments passed in
+def verify_arguments(args):
+    for part in args.partition:
+        if part not in TPC_H_TABLES:
+            sys.exit("Passed invalid table to split")
+    
+    if args.arch != 0 and args.arch != 1:
+        sys.exit("Passed invalid architecture")
+    
+    if args.mode != 0 and args.mode != 1:
+        sys.exit("Passed invalid mode")
 
 def main() -> None:
-    print("hi")
-    partition = ["lineitem"]
-    non_partition = ["customer", "nation", "orders", "part", "partsupp", "region", "supplier"]
-    arch = AggregatorArchitecture.DEFAULT
-    mode = AggregatorMode.DISTRIBUTED
-    send_init(API_URL, INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
+    args = parser.parse_args()
+    verify_arguments(args)
+    partition = args.partition
+    non_partition = [table for table in TPC_H_TABLES if table not in partition]
+    arch = AggregatorArchitecture(args.arch)
+    mode = AggregatorMode(args.mode)
+
+    # Initialize the system with command line arguments
+    initialize_system(API_URL, INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
 
 
 if __name__ == "__main__":

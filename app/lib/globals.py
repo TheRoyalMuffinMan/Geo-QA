@@ -52,7 +52,8 @@ class Aggregator:
             partition: list[str] = None, 
             non_partition: list[str] = None, 
             mode: AggregatorMode = AggregatorMode.NOT_SET,
-            arch: AggregatorArchitecture = AggregatorArchitecture.NOT_SET
+            arch: AggregatorArchitecture = AggregatorArchitecture.NOT_SET,
+            initialized: bool = False
     ) -> None:
         self.mount_point = mount_point
         self.workers = workers
@@ -61,6 +62,7 @@ class Aggregator:
         self.non_partition = non_partition if partition is not None else []
         self.mode = mode
         self.arch = arch
+        self.initialized = initialized
 
     def __repr__(self):
         return (f"Aggregator(mount_point={self.mount_point!r}, "
@@ -69,7 +71,8 @@ class Aggregator:
                 f"partition={self.partition!r}, "
                 f"non_partition={self.non_partition!r}, "
                 f"mode={self.mode!r}, "
-                f"arch={self.arch!r})")
+                f"arch={self.arch!r}, "
+                f"initialized={self.initialized!r}")
     
 class Worker:
     def __init__(

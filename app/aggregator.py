@@ -31,12 +31,17 @@ Receives initialization configurations
 def receive_init() -> Response:
     global aggregator
 
+    # Already initialized, skip this process and let manager know
+    if aggregator.initialized:
+        return make_response("Initialized Already", 201)
+
     # Initialize the aggregator with setup conditions
     aggregator.partition = request.json.get('partition')
     aggregator.non_partition = request.json.get('non_partition')
     aggregator.arch = AggregatorArchitecture(request.json.get('arch'))
     aggregator.mode = AggregatorMode(request.json.get('mode'))
 
+    # Setup messages to be broadcasted to all worker nodes
     messages = {id: InitializationMessage(WorkerType.WORKER) for id in aggregator.worker_ids}
 
     # Follower represents Leader-Follower specialization
@@ -96,6 +101,15 @@ def receive_init() -> Response:
             for id in messages:
                 for table in aggregator.non_partition:
                     messages[id].insertion_tables.append(f'{mount_point}/{table}.tbl')
+        
+        # Since queries will be processed locally, we will insert non-partitioned tables
+        if aggregator.mode == AggregatorMode.LOCAL:
+            file = open(f'{mount_point}/load.sql', 'w')
+            for table in aggregator.non_partition:
+                file.write(f"\copy {table} FROM '{mount_point}/{table}.tbl' DELIMITER '|' CSV;\n")
+            file.close()
+            subprocess.run([f"cd {mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
+
     
     # Send out initialization commands to all workers
     for worker in messages:
@@ -111,7 +125,7 @@ def receive_init() -> Response:
         if response.status_code != 200:
             print("Issue sending request to worker")
     
-    
+    aggregator.initialized = True
     return make_response("Success", 200)
 
 
