@@ -4,6 +4,7 @@ from lib.database import *
 import os
 import requests
 import configparser
+import time
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
@@ -16,8 +17,11 @@ def process_query() -> Response:
     agg_url = request.json.get('agg_url')
     query_id = request.json.get('query_id')
     worker_id = request.json.get('worker_id')
+    start_time = time.time()
     try: 
         results = db.execute_query(query)
+        end_time = time.time()
+        results.append({"query_time": end_time - start_time})
         response = requests.post(agg_url, json={"results": results,
                                                 "query_id": query_id,
                                                 "worker_id": worker_id})
@@ -125,8 +129,11 @@ def leader_results() -> Response:
         file.close()
         # Load tables
         subprocess.run([f"cd {worker.mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
-        
+    
+    start_time = time.time()
     results = db.execute_query(query)
+    end_time = time.time()
+    results.append({"query_time": end_time - start_time})
     response = requests.post(agg_url, json={"results": results,
                                             "query_id": query_id,
                                             "worker_id": worker_id})

@@ -212,6 +212,7 @@ def send_task():
     # Handles default architecture
     # LOCAL AND DEFAULT
     # DISTRIBUTED AND DEFAULT
+    start_time = time.time()
     if aggregator.arch == AggregatorArchitecture.DEFAULT:
         for worker_url in aggregator.workers:
             response = None
@@ -260,11 +261,19 @@ def send_task():
             
             if response.status_code != 200:
                 print("Issue sending request to leader")
-
+    
+    end_time = time.time()
+    # Write network latency to json file with query_id
+    results["network_latency"] = end_time - start_time
+    with open(f"query-results/{query_id}_network_latency.json", "w") as f:
+        f.write(json.dumps(results))
 
     if aggregator.mode == AggregatorMode.LOCAL:
         # Run the query on the aggregator
+        start_time = time.time()
         results = db.execute_query(query)
+        end_time = time.time()
+        results.append({"query_time": end_time - start_time})
         
         # Write results to json file with query_id
         with open(f"query-results/{query_id}_aggregator.json", "w") as f:
