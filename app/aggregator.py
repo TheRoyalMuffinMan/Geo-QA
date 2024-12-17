@@ -270,7 +270,7 @@ def receive_smart_init() -> Response:
                     aggregator.arch = AggregatorArchitecture.DEFAULT
 
             if aggregator.arch == AggregatorArchitecture.DEFAULT:
-                smart_split(messages, "part", "partsupp", 0, 0)
+                smart_split(messages, "part", "partsupp", 0, 0, aggregator.workers, aggregator.worker_ids, messages)
                 setup_partitions(messages, aggregator.workers, aggregator.worker_ids, messages, messages)
     
     print(f"Messages: {messages}")
