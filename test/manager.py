@@ -27,6 +27,13 @@ parser.add_argument(
     default=None,
     help='<Optional> Sample query for Geo-QA to learn from (.sql format)'
 )
+parser.add_argument(
+    '--run_init', 
+    action='store_false',  # Sets 'run_init' to False if flag is provided
+    default=True,          # Default is True if flag is not provided
+    help='Run initialization (default: True)'
+)
+
 
 class AggregatorMode(Enum):
     LOCAL = 0
@@ -155,12 +162,14 @@ def main() -> None:
     if sample_query:
         number_query = int(re.findall(r'\d+', sample_query)[0])
         sample_query = open(sample_query, 'r').read()
-        
-    # Initialize the system with command line arguments
-    if sample_query and number_query:
-        smart_initialize_system(API_URL + SMART_INITIALIZATION_ENDPOINT, arch, mode, sample_query, number_query)
-    else:
-        initialize_system(API_URL + INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
+
+    if args.run_init:
+        # Initialize the system with command line arguments
+        if sample_query and number_query:
+            smart_initialize_system(API_URL + SMART_INITIALIZATION_ENDPOINT, arch, mode, sample_query, number_query)
+        else:
+            initialize_system(API_URL + INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
+
     
     # Prompt the user for queries 
     query_count = 0
@@ -182,6 +191,7 @@ def main() -> None:
                 print("Invalid table entered")
                 continue
         
+        print(tables)
         # Run the query
         response = send_sql_query(API_URL + TASK_ENDPOINT, tables, sql_query, str(query_count + 1))
         print(response)
