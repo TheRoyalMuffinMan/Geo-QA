@@ -5,6 +5,7 @@ import os
 import requests
 import configparser
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
@@ -89,15 +90,29 @@ def leader_data() -> Response:
     tables = request.json.get('tables')
     agg_url = request.json.get('agg_url')
 
-    for follower_url in worker.follower_addresses:
-        response = requests.post(f"{follower_url}/process_data", 
-                            json={
-                            "tables": tables,
-                            "agg_url": agg_url
-                            })
-        
+    def send_to_follower(follower_url):
+        """Helper function to send POST request to a follower."""
+        response = requests.post(
+            f"{follower_url}/process_data",
+            json={"tables": tables, "agg_url": agg_url}
+        )
         if response.status_code != 200:
-            print("Issue sending request to follower")
+            print(f"Issue sending request to follower: {follower_url}")
+        return response
+
+    # Parallelize the requests using ThreadPoolExecutor
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(send_to_follower, follower_url)
+            for follower_url in worker.follower_addresses
+        ]
+
+        # Wait for all requests to complete
+        for future in as_completed(futures):
+            try:
+                future.result()  # Ensures any exceptions are raised
+            except Exception as e:
+                print(f"Error during request: {e}")
     
     return make_response("Success", 200)
 
