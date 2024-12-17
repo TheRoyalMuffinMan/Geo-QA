@@ -18,7 +18,12 @@ workers = []
 worker_ids = []
 tables = ["customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"]
 
-def smart_split(messages: list[InitializationMessage], left_table: str, right_table: str, left_key_pos: int, right_key_pos: int) -> None:
+def smart_split(
+    messages: list[InitializationMessage], 
+    left_table: str, right_table: str, left_key_pos: int, right_key_pos: int,
+    nodes: list[str], node_ids: list[str], message_iterator: list[str]
+) -> None:
+
     left_file_path = f"{aggregator.mount_point}/{left_table}.tbl"
     left_buckets = dict()
     with open(left_file_path, 'r') as file:
@@ -29,18 +34,18 @@ def smart_split(messages: list[InitializationMessage], left_table: str, right_ta
 
     total_lines = len(left_buckets)
 
-    # Calculate the number of lines each worker should process
-    lines_per_worker = total_lines // len(aggregator.workers)
+    # Calculate the number of lines each node should process
+    lines_per_node = total_lines // len(nodes)
 
     # Generate part and lineitem files
-    worker_file_paths_left = {id: f'{aggregator.mount_point}/worker_{id}_{left_table}.tbl' for id in aggregator.worker_ids}
-    for id in worker_file_paths_left:
-        open(worker_file_paths_left[id], 'w').close()
-    worker_file_paths_right = {id: f'{aggregator.mount_point}/worker_{id}_{right_table}.tbl' for id in aggregator.worker_ids}
-    for id in worker_file_paths_right:
-        open(worker_file_paths_right[id], 'w').close()
+    node_file_paths_left = {id: f'{aggregator.mount_point}/worker_{id}_{left_table}.tbl' for id in node_ids}
+    for id in node_file_paths_left:
+        open(node_file_paths_left[id], 'w').close()
+    node_file_paths_right = {id: f'{aggregator.mount_point}/worker_{id}_{right_table}.tbl' for id in node_ids}
+    for id in node_file_paths_right:
+        open(node_file_paths_right[id], 'w').close()
     
-    # Temporary buffers to batch the writes for each worker
+    # Temporary buffers to batch the writes for each node
     left_buffers = collections.defaultdict(list)
     right_buffers = collections.defaultdict(list)
     seen = set()
@@ -50,26 +55,26 @@ def smart_split(messages: list[InitializationMessage], left_table: str, right_ta
     with open(right_file_path, 'r') as file:
         for line in file:
             right_key = int(line.split('|')[right_key_pos])
-            worker_id = (right_key // lines_per_worker) % len(aggregator.worker_ids)
+            node_id = (right_key // lines_per_node) % len(node_ids)
             # Add lines to buffers
-            right_buffers[str(worker_id + 1)].append(line)
+            right_buffers[node_ids[node_id]].append(line)
             if right_key not in seen:
-                left_buffers[str(worker_id + 1)].append(left_buckets[right_key])
+                left_buffers[node_ids[node_id]].append(left_buckets[right_key])
                 seen.add(right_key)
 
-    # Write all the batched data to the corresponding worker files at once
-    for worker_id in aggregator.worker_ids:
-        with open(worker_file_paths_left[worker_id], 'a') as f:
-            f.writelines(left_buffers[worker_id])  # Write all lines at once
-        with open(worker_file_paths_right[worker_id], 'a') as f:
-            f.writelines(right_buffers[worker_id])  # Write all lines at once
+    # Write all the batched data to the corresponding node files at once
+    for node_id in node_ids:
+        with open(node_file_paths_left[node_id], 'a') as f:
+            f.writelines(left_buffers[node_id])  # Write all lines at once
+        with open(node_file_paths_right[node_id], 'a') as f:
+            f.writelines(right_buffers[node_id])  # Write all lines at once
 
     # Add partition-ed table file to be inserted
-    for id in messages:
-        messages[id].insertion_tables.append(worker_file_paths_left[id])
-        messages[id].insertion_tables.append(worker_file_paths_right[id])
+    for id in message_iterator:
+        messages[id].insertion_tables.append(node_file_paths_left[id])
+        messages[id].insertion_tables.append(node_file_paths_right[id])
 
-    print(f"Data has been split into {len(aggregator.workers)} files: {worker_file_paths_left}, {worker_file_paths_right}")
+    print(f"Data has been split into {len(nodes)} files: {node_file_paths_left}, {node_file_paths_right}")
 
 def setup_leader_followers(messages: list[InitializationMessage]) -> None:
     for i in range(1, len(aggregator.worker_ids) - 1, 3):
@@ -211,15 +216,39 @@ def receive_smart_init() -> Response:
         # Handle query 14 (build new lineitem and part tables)
         if number_query == 14:
             aggregator.partition = [table for table in DEFAULT_ALL_TABLES if table not in main_tables]
+
+            if aggregator.arch == AggregatorArchitecture.FOLLOWER:
+                if len(aggregator.workers) % 3 == 0:
+                    # Get all the ids that will correlate to the leaders
+                    setup_leader_followers(messages)
+
+                    # Setups partitions for leaders and followers
+                    smart_split(messages, "part", "lineitem", 0, 1, aggregator.followers, aggregator.follower_ids, aggregator.follower_ids)
+                    setup_partitions(messages, aggregator.followers, aggregator.follower_ids, aggregator.follower_ids, aggregator.leader_ids)
+                else:
+                    aggregator.arch = AggregatorArchitecture.DEFAULT
+
             if aggregator.arch == AggregatorArchitecture.DEFAULT:
-                smart_split(messages, "part", "lineitem", 0, 1)
+                smart_split(messages, "part", "lineitem", 0, 1, aggregator.workers, aggregator.worker_ids, messages)
                 setup_partitions(messages, aggregator.workers, aggregator.worker_ids, messages, messages)
 
         # Handle query 12 (build new lineitem and orders tables)
         if number_query == 12:
             aggregator.partition = [table for table in DEFAULT_ALL_TABLES if table not in main_tables]
+
+            if aggregator.arch == AggregatorArchitecture.FOLLOWER:
+                if len(aggregator.workers) % 3 == 0:
+                    # Get all the ids that will correlate to the leaders
+                    setup_leader_followers(messages)
+
+                    # Setups partitions for leaders and followers
+                    smart_split(messages, "orders", "lineitem", 0, 0, aggregator.followers, aggregator.follower_ids, aggregator.follower_ids)
+                    setup_partitions(messages, aggregator.followers, aggregator.follower_ids, aggregator.follower_ids, aggregator.leader_ids)
+                else:
+                    aggregator.arch = AggregatorArchitecture.DEFAULT
+
             if aggregator.arch == AggregatorArchitecture.DEFAULT:
-                smart_split(messages, "orders", "lineitem", 0, 0)
+                smart_split(messages, "orders", "lineitem", 0, 0, aggregator.workers, aggregator.worker_ids, messages)
                 setup_partitions(messages, aggregator.workers, aggregator.worker_ids, messages, messages)
     
     # Only 2 tables in usage but multiple tables in subqueries (split on all tables but manually split on the WHERE key clause)
@@ -227,6 +256,18 @@ def receive_smart_init() -> Response:
         aggregator.non_partition = sub_tables
         if number_query == 16:
             aggregator.partition = [table for table in DEFAULT_ALL_TABLES if table not in main_tables and table not in sub_tables]
+
+            if aggregator.arch == AggregatorArchitecture.FOLLOWER:
+                if len(aggregator.workers) % 3 == 0:
+                    # Get all the ids that will correlate to the leaders
+                    setup_leader_followers(messages)
+
+                    # Setups partitions for leaders and followers
+                    smart_split(messages, "part", "partsupp", 0, 0, aggregator.followers, aggregator.follower_ids, aggregator.follower_ids)
+                    setup_partitions(messages, aggregator.followers, aggregator.follower_ids, aggregator.follower_ids, aggregator.leader_ids)
+                else:
+                    aggregator.arch = AggregatorArchitecture.DEFAULT
+
             if aggregator.arch == AggregatorArchitecture.DEFAULT:
                 smart_split(messages, "part", "partsupp", 0, 0)
                 setup_partitions(messages, aggregator.workers, aggregator.worker_ids, messages, messages)

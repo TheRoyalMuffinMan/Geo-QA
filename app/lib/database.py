@@ -89,7 +89,7 @@ class Database:
         subprocess.run(['psql', '-U', self.user, '-d', self.name, '-c', '\\dt'], check=True)
         
     
-    def fetch_all(self, table_name: str, batch_size: int = 30000) -> list[dict]:
+    def fetch_all(self, table_name: str, batch_size: int = 30000):
         try:
             conn = psycopg2.connect(
                 dbname=self.name,
