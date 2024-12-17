@@ -391,6 +391,9 @@ def send_task():
         # Write results to json file with query_id
         with open(f"query-results/{query_id}_aggregator.json", "w") as f:
             f.write(json.dumps(results))
+            
+        for table in tables:
+            db.delete_rows(table)
         
     return jsonify(results)
 
