@@ -27,12 +27,6 @@ parser.add_argument(
     default=None,
     help='<Optional> Sample query for Geo-QA to learn from (.sql format)'
 )
-parser.add_argument(
-    '--run_init', 
-    action='store_false',  # Sets 'run_init' to False if flag is provided
-    default=True,          # Default is True if flag is not provided
-    help='Run initialization (default: True)'
-)
 
 
 class AggregatorMode(Enum):
@@ -163,12 +157,11 @@ def main() -> None:
         number_query = int(re.findall(r'\d+', sample_query)[0])
         sample_query = open(sample_query, 'r').read()
 
-    if args.run_init:
-        # Initialize the system with command line arguments
-        if sample_query and number_query:
-            smart_initialize_system(API_URL + SMART_INITIALIZATION_ENDPOINT, arch, mode, sample_query, number_query)
-        else:
-            initialize_system(API_URL + INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
+    # Initialize the system with command line arguments
+    if sample_query and number_query:
+        smart_initialize_system(API_URL + SMART_INITIALIZATION_ENDPOINT, arch, mode, sample_query, number_query)
+    else:
+        initialize_system(API_URL + INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
 
     
     # Prompt the user for queries 
