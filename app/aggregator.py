@@ -6,6 +6,7 @@ import subprocess
 import requests
 import configparser
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
@@ -322,79 +323,93 @@ def send_task():
     query_id = request.json.get('query_id')
     results = {}
 
-    # Handles default architecture
-    # LOCAL AND DEFAULT
-    # DISTRIBUTED AND DEFAULT
+    def send_request(url, endpoint, payload):
+        """Helper function to send a POST request."""
+        response = requests.post(f"{url}/{endpoint}", json=payload)
+        if response.status_code != 200:
+            print(f"Issue sending request to {url}")
+        return response
+
     start_time = time.time()
+
+    # Handles default architecture
     if aggregator.arch == AggregatorArchitecture.DEFAULT:
-        for worker_url in aggregator.workers:
-            response = None
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for worker_url in aggregator.workers:
+                if aggregator.mode == AggregatorMode.LOCAL:
+                    payload = {
+                        "tables": tables,
+                        "agg_url": "http://aggregator:5001/receive_data"
+                    }
+                    futures.append(executor.submit(send_request, worker_url, "process_data", payload))
 
-            if aggregator.mode == AggregatorMode.LOCAL:
-                response = requests.post(f"{worker_url}/process_data", 
-                                json={
-                                "tables": tables,
-                                "agg_url": f"http://aggregator:5001/receive_data"
-                                })
+                elif aggregator.mode == AggregatorMode.DISTRIBUTED:
+                    payload = {
+                        "query": query,
+                        "agg_url": "http://aggregator:5001/receive_result",
+                        "query_id": query_id,
+                        "worker_id": aggregator.worker_ids[aggregator.workers.index(worker_url)]
+                    }
+                    futures.append(executor.submit(send_request, worker_url, "process_query", payload))
 
-            if aggregator.mode == AggregatorMode.DISTRIBUTED:
-                response = requests.post(f"{worker_url}/process_query", 
-                                json={
-                                "query": query,
-                                "agg_url": f"http://aggregator:5001/receive_result",
-                                "query_id": query_id,
-                                "worker_id": aggregator.worker_ids[aggregator.workers.index(worker_url)]
-                                })
-            
-            if response.status_code != 200:
-                print("Issue sending request to worker")
-    
+            # Wait for all futures to complete
+            for future in as_completed(futures):
+                try:
+                    future.result()  # Raises exception if the request failed
+                except Exception as e:
+                    print(f"Error: {e}")
+
     # Handles leader-follower architecture
-    # LOCAL AND FOLLOWER
-    # DISTRIBUTED AND FOLLOWER
     if aggregator.arch == AggregatorArchitecture.FOLLOWER:
-        for leader_url in aggregator.leaders:
-            response = None
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for leader_url in aggregator.leaders:
+                if aggregator.mode == AggregatorMode.LOCAL:
+                    payload = {
+                        "tables": tables,
+                        "agg_url": "http://aggregator:5001/receive_data"
+                    }
+                    futures.append(executor.submit(send_request, leader_url, "leader_data", payload))
 
-            if aggregator.mode == AggregatorMode.LOCAL:
-                response = requests.post(f"{leader_url}/leader_data", 
-                                json={
-                                "tables": tables,
-                                "agg_url": f"http://aggregator:5001/receive_data"
-                                })
+                elif aggregator.mode == AggregatorMode.DISTRIBUTED:
+                    payload = {
+                        "query": query,
+                        "agg_url": "http://aggregator:5001/receive_result",
+                        "query_id": query_id,
+                        "worker_id": aggregator.worker_ids[aggregator.workers.index(leader_url)]
+                    }
+                    futures.append(executor.submit(send_request, leader_url, "leader_results", payload))
 
-            if aggregator.mode == AggregatorMode.DISTRIBUTED:
-                response = requests.post(f"{leader_url}/leader_results", 
-                                json={
-                                "query": query,
-                                "agg_url": f"http://aggregator:5001/receive_result",
-                                "query_id": query_id,
-                                "worker_id": aggregator.worker_ids[aggregator.workers.index(leader_url)]
-                                })
-            
-            if response.status_code != 200:
-                print("Issue sending request to leader")
-    
+            # Wait for all futures to complete
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    print(f"Error: {e}")
+
     end_time = time.time()
-    # Write network latency to json file with query_id
     results["network_latency"] = end_time - start_time
+
+    # Save network latency
     with open(f"query-results/{query_id}_network_latency.json", "w") as f:
         f.write(json.dumps(results))
 
+    # LOCAL mode: Run the query on the aggregator
     if aggregator.mode == AggregatorMode.LOCAL:
-        # Run the query on the aggregator
         start_time = time.time()
         results = db.execute_query(query)
         end_time = time.time()
         results.append({"query_time": end_time - start_time})
-        
-        # Write results to json file with query_id
+
+        # Save results
         with open(f"query-results/{query_id}_aggregator.json", "w") as f:
             f.write(json.dumps(results))
-            
+
+        # Clean up tables
         for table in tables:
             db.delete_rows(table)
-        
+
     return jsonify(results)
 
 @app.route('/receive_result', methods=['POST'])
