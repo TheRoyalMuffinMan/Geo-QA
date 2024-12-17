@@ -116,6 +116,7 @@ def leader_results() -> Response:
     agg_url = request.json.get('agg_url')
     query_id = request.json.get('query_id')
     worker_id = request.json.get('worker_id')
+    delete_tables = set()
 
     for follower_url in worker.follower_addresses:
         response = requests.post(f"{follower_url}/follower_sync", json={})
@@ -126,6 +127,7 @@ def leader_results() -> Response:
         file = open(f'{worker.mount_point}/load.sql', 'w')
         for table in files:
             file.write(f"\copy {table} FROM '{files[table]}' DELIMITER '|' CSV;\n")
+            delete_tables.add(table)
         file.close()
         # Load tables
         subprocess.run([f"cd {worker.mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
@@ -137,6 +139,11 @@ def leader_results() -> Response:
     response = requests.post(agg_url, json={"results": results,
                                             "query_id": query_id,
                                             "worker_id": worker_id})
+    # Clean up tables
+    print(delete_tables)
+    for table in delete_tables:
+        db.delete_rows(table)
+
     return make_response("Success", 200)
 
 
