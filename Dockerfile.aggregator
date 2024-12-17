@@ -23,7 +23,7 @@ RUN apk add --no-cache python3 && \
     rm -r /root/.cache    
 
 # Install flask, requests and psycopg2 libraries through pip
-RUN pip install flask requests psycopg2-binary
+RUN pip install flask requests psycopg2-binary sqlparse
 
 # Sets working directory for docker container
 WORKDIR /app

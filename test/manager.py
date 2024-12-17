@@ -2,9 +2,12 @@ from enum import Enum
 import argparse
 import requests
 import sys
+import os
+import re
 
 TPC_H_TABLES = {"customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"}
 API_URL = "http://localhost:5001"
+SMART_INITIALIZATION_ENDPOINT = "/receive_smart_init"
 INITIALIZATION_ENDPOINT = "/receive_init"
 TASK_ENDPOINT = "/send_task"
 
@@ -17,6 +20,13 @@ parser.add_argument(
 )
 parser.add_argument('-a', '--arch', type=int, help='<Required> Nodes architecture (0:DEFAULT|1:FOLLOWER)', required=True)
 parser.add_argument('-m', '--mode', type=int, help='<Required> Nodes mode (0:LOCAL|1:DISTRIBUTED)', required=True)
+parser.add_argument(
+    'sample_query', 
+    type=str, 
+    nargs='?',
+    default=None,
+    help='<Optional> Sample query for Geo-QA to learn from (.sql format)'
+)
 
 class AggregatorMode(Enum):
     LOCAL = 0
@@ -29,7 +39,31 @@ class AggregatorArchitecture(Enum):
     NOT_SET = 2
 
 # Processes initialization of the system
-def initialize_system(api_url: str, endpoint: str, partition: list[str], non_partition: list[str], arch: AggregatorArchitecture, mode: AggregatorMode) -> None:
+def smart_initialize_system(api_url: str, arch: AggregatorArchitecture, mode: AggregatorMode, sample_query: str, number_query: int) -> None:
+    # Prepare JSON payload
+    payload = {
+        "arch": arch.value,
+        "mode": mode.value,
+        "sample_query": sample_query,
+        "number_query": number_query
+    }
+
+    # Send POST request
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(api_url, json=payload, headers=headers)
+    
+    # Check for response status
+    if response.status_code != 200:
+        if response.status_code == 201:
+            print("System already initialized")
+        else:
+            sys.exit("Error with initialization")
+    
+    return
+
+
+# Processes initialization of the system
+def initialize_system(api_url: str, partition: list[str], non_partition: list[str], arch: AggregatorArchitecture, mode: AggregatorMode) -> None:
     # Prepare JSON payload
     payload = {
         "partition": partition,
@@ -40,7 +74,7 @@ def initialize_system(api_url: str, endpoint: str, partition: list[str], non_par
 
     # Send POST request
     headers = {"Content-Type": "application/json"}
-    response = requests.post(api_url + endpoint, json=payload, headers=headers)
+    response = requests.post(api_url, json=payload, headers=headers)
     
     # Check for response status
     if response.status_code != 200:
@@ -104,6 +138,9 @@ def verify_arguments(args):
     
     if args.mode != 0 and args.mode != 1:
         sys.exit("Passed invalid mode")
+    
+    if args.sample_query and not os.path.isfile(args.sample_query):
+        sys.exit('Not a valid path to a .sql file')
 
 def main() -> None:
     args = parser.parse_args()
@@ -112,9 +149,18 @@ def main() -> None:
     non_partition = [table for table in TPC_H_TABLES if table not in partition]
     arch = AggregatorArchitecture(args.arch)
     mode = AggregatorMode(args.mode)
+    sample_query = args.sample_query if args.sample_query else None
+    number_query = None
 
+    if sample_query:
+        number_query = int(re.findall(r'\d+', sample_query)[0])
+        sample_query = open(sample_query, 'r').read()
+        
     # Initialize the system with command line arguments
-    initialize_system(API_URL, INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
+    if sample_query and number_query:
+        smart_initialize_system(API_URL + SMART_INITIALIZATION_ENDPOINT, arch, mode, sample_query, number_query)
+    else:
+        initialize_system(API_URL + INITIALIZATION_ENDPOINT, partition, non_partition, arch, mode)
     
     # Prompt the user for queries 
     query_count = 0
