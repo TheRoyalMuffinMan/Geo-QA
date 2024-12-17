@@ -18,6 +18,63 @@ workers = []
 worker_ids = []
 tables = ["customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"]
 
+# Sets up the tables to be partitioned evenly for default and leader-follower
+def setup_partitions(messages: list[InitializationMessage], nodes: list[str], node_ids: list[str], message_iterator: list[str], distributed_iterator: list[str]) -> None:
+    # Begin splitting on all valid partitioned tables
+    for table in aggregator.partition:
+        # To save time on initialization, we will split the table files into smaller files
+        file_path = f"{aggregator.mount_point}/{table}.tbl"
+        
+        # Read number of lines in the file
+        with open(file_path, 'r') as file:
+            total_lines = sum(1 for _ in file)
+
+        # Calculate the number of lines each node should process
+        lines_per_node = total_lines // len(nodes)
+        # Handle cases where the lines are not evenly divisible
+        remainder = total_lines % len(nodes)
+
+        # Define files for each node
+        node_file_paths = {id: f'{aggregator.mount_point}/worker_{id}_{table}.tbl' for id in node_ids}
+        for id in node_file_paths:
+            open(node_file_paths[id], 'w').close()
+        
+        # Begin splitting process
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+            
+            start_line = 0
+            for pos in range(len(nodes)):
+                end_line = start_line + lines_per_node + (remainder if pos == len(nodes) - 1 else 0)
+                node_file = node_file_paths[node_ids[pos]]
+
+                # Write the assigned lines to the node's file
+                with open(node_file, 'w') as node_file:
+                    for line_num in range(start_line, end_line):
+                        node_file.write(lines[line_num])
+                
+                start_line = end_line
+        
+        # Add partition-ed table file to be inserted
+        for id in message_iterator:
+            messages[id].insertion_tables.append(node_file_paths[id])
+
+        print(f"Data has been split into {len(nodes)} files: {node_file_paths}")
+
+    # Add non-partitioned tables
+    if aggregator.mode == AggregatorMode.DISTRIBUTED:      
+        for id in distributed_iterator:
+            for table in aggregator.non_partition:
+                messages[id].insertion_tables.append(f'{aggregator.mount_point}/{table}.tbl')
+    
+    # Since queries will be processed locally, we will insert non-partitioned tables
+    if aggregator.mode == AggregatorMode.LOCAL:
+        file = open(f'{mount_point}/load.sql', 'w')
+        for table in aggregator.non_partition:
+            file.write(f"\copy {table} FROM '{aggregator.mount_point}/{table}.tbl' DELIMITER '|' CSV;\n")
+        file.close()
+        subprocess.run([f"cd {aggregator.mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
+
 """
 Receives initialization configurations (program determined)
 ------------------------------------------------------------------------------------------
@@ -128,9 +185,6 @@ def receive_smart_init() -> Response:
         if number_query == 16:
             pass
 
-
-
-
 """
 Receives initialization configurations
 ------------------------------------------------------------------------------------------
@@ -180,119 +234,14 @@ def receive_init() -> Response:
                 messages[aggregator.worker_ids[i + 1]].leader_address = aggregator.workers[i]
                 messages[aggregator.worker_ids[i + 1]].worker_type = WorkerType.FOLLOWER
 
-            # Being splitting on all valid partitioned tables (only for followers)
-            for table in aggregator.partition:
-                # To save time on initialization, we will split the table files into smaller files
-                file_path = f"{mount_point}/{table}.tbl"
-                
-                # Read number of lines in the file
-                with open(file_path, 'r') as file:
-                    total_lines = sum(1 for _ in file)
-
-                # Calculate the number of lines each follower should process
-                lines_per_follower = total_lines // len(aggregator.followers)
-                # Handle cases where the lines are not evenly divisible
-                remainder = total_lines % len(aggregator.followers)
-
-                # Define files for each follower
-                follower_file_paths = {id: f'{mount_point}/worker_{id}_{table}.tbl' for id in aggregator.follower_ids}
-                for id in follower_file_paths:
-                    open(follower_file_paths[id], 'w').close()
-                
-                # Begin splitting process
-                with open(file_path, 'r') as file:
-                    lines = file.readlines()
-                    
-                    start_line = 0
-                    for pos in range(len(aggregator.followers)):
-                        end_line = start_line + lines_per_follower + (remainder if pos == len(aggregator.followers) - 1 else 0)
-                        follower_file = follower_file_paths[aggregator.follower_ids[pos]]
-
-                        # Write the assigned lines to the follower's file
-                        with open(follower_file, 'w') as follower_file:
-                            for line_num in range(start_line, end_line):
-                                follower_file.write(lines[line_num])
-                        
-                        start_line = end_line
-                
-                # Add partition-ed table file to be inserted for followers
-                for id in aggregator.follower_ids:
-                    messages[id].insertion_tables.append(follower_file_paths[id])
-
-                print(f"Data has been split into {len(aggregator.followers)} files: {follower_file_paths}")
-
-            # Add non-partitioned tables to leaders
-            if aggregator.mode == AggregatorMode.DISTRIBUTED:      
-                for id in aggregator.leader_ids:
-                    for table in aggregator.non_partition:
-                        messages[id].insertion_tables.append(f'{mount_point}/{table}.tbl')
-
-            # Since queries will be processed locally, we will insert non-partitioned tables
-            if aggregator.mode == AggregatorMode.LOCAL:
-                file = open(f'{mount_point}/load.sql', 'w')
-                for table in aggregator.non_partition:
-                    file.write(f"\copy {table} FROM '{mount_point}/{table}.tbl' DELIMITER '|' CSV;\n")
-                file.close()
-                subprocess.run([f"cd {mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
+            # Setups partitions for leaders and followers
+            setup_partitions(messages, aggregator.followers, aggregator.follower_ids, aggregator.follower_ids, aggregator.leader_ids)
         else:
             aggregator.arch = AggregatorArchitecture.DEFAULT
 
     # Default is traditional multiple worker nodes with no specialization
     if aggregator.arch == AggregatorArchitecture.DEFAULT:
-        # Begin splitting on all valid partitioned tables
-        for table in aggregator.partition:
-            # To save time on initialization, we will split the table files into smaller files
-            file_path = f"{mount_point}/{table}.tbl"
-            
-            # Read number of lines in the file
-            with open(file_path, 'r') as file:
-                total_lines = sum(1 for _ in file)
-
-            # Calculate the number of lines each worker should process
-            lines_per_worker = total_lines // len(aggregator.workers)
-            # Handle cases where the lines are not evenly divisible
-            remainder = total_lines % len(aggregator.workers)
-
-            # Define files for each worker
-            worker_file_paths = {id: f'{mount_point}/worker_{id}_{table}.tbl' for id in aggregator.worker_ids}
-            for id in worker_file_paths:
-                open(worker_file_paths[id], 'w').close()
-            
-            # Begin splitting process
-            with open(file_path, 'r') as file:
-                lines = file.readlines()
-                
-                start_line = 0
-                for pos in range(len(aggregator.workers)):
-                    end_line = start_line + lines_per_worker + (remainder if pos == len(aggregator.workers) - 1 else 0)
-                    worker_file = worker_file_paths[str(pos + 1)]
-
-                    # Write the assigned lines to the worker's file
-                    with open(worker_file, 'w') as worker_file:
-                        for line_num in range(start_line, end_line):
-                            worker_file.write(lines[line_num])
-                    
-                    start_line = end_line
-            
-            # Add partition-ed table file to be inserted
-            for id in messages:
-                messages[id].insertion_tables.append(worker_file_paths[id])
-
-            print(f"Data has been split into {len(aggregator.workers)} files: {worker_file_paths}")
-
-        # Add non-partitioned tables
-        if aggregator.mode == AggregatorMode.DISTRIBUTED:      
-            for id in messages:
-                for table in aggregator.non_partition:
-                    messages[id].insertion_tables.append(f'{mount_point}/{table}.tbl')
-        
-        # Since queries will be processed locally, we will insert non-partitioned tables
-        if aggregator.mode == AggregatorMode.LOCAL:
-            file = open(f'{mount_point}/load.sql', 'w')
-            for table in aggregator.non_partition:
-                file.write(f"\copy {table} FROM '{mount_point}/{table}.tbl' DELIMITER '|' CSV;\n")
-            file.close()
-            subprocess.run([f"cd {mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
+        setup_partitions(messages, aggregator.workers, aggregator.worker_ids, messages, messages)
 
     print(f"Messages: {messages}")
 
