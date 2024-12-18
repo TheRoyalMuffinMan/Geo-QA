@@ -474,32 +474,6 @@ def receive_data():
     db.insert_rows(Table(table, rows))
     return make_response("Success", 200)
 
-def send_init():
-    worker_id = 0
-    for table in tables:
-        if table == "lineitem":
-            for batch in db.fetch_all(table):
-                response = requests.post(
-                    f"{workers[worker_id]}/init", 
-                    json={"name": table, "rows": batch}
-                )
-                print(response)
-                if response.status_code != 200:
-                    print("Error sending init to worker")
-                worker_id = (worker_id + 1) % len(workers)
-        else:
-            for worker_url in workers:
-                for batch in db.fetch_all(table):
-                    response = requests.post(
-                        f"{worker_url}/init", 
-                        json={"name": table, "rows": batch}
-                    )
-                    if response.status_code != 200:
-                        print("Error sending init to worker")
-                        
-    # Remove rows from database
-    db.delete_rows("lineitem")
-
 def init_aggregator() -> Database:
     global aggregator, db, mount_point, workers, worker_ids
     
