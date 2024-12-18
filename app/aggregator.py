@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, make_response, Response
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from lib.globals import *
 from lib.database import *
 import os
@@ -6,24 +7,18 @@ import subprocess
 import requests
 import configparser
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 aggregator = None
 db = None
 
-
-mount_point = None
-workers = []
-worker_ids = []
-tables = ["customer", "lineitem", "nation", "orders", "part", "partsupp", "region", "supplier"]
-
 def smart_split(
     messages: list[InitializationMessage], 
     left_table: str, right_table: str, left_key_pos: int, right_key_pos: int,
     nodes: list[str], node_ids: list[str], message_iterator: list[str]
 ) -> None:
+    global aggregator
 
     left_file_path = f"{aggregator.mount_point}/{left_table}.tbl"
     left_buckets = dict()
@@ -78,6 +73,8 @@ def smart_split(
     print(f"Data has been split into {len(nodes)} files: {node_file_paths_left}, {node_file_paths_right}")
 
 def setup_leader_followers(messages: list[InitializationMessage]) -> None:
+    global aggregator
+
     for i in range(1, len(aggregator.worker_ids) - 1, 3):
         # Begin tracking leader
         aggregator.leader_ids.append(aggregator.worker_ids[i])
@@ -97,6 +94,8 @@ def setup_leader_followers(messages: list[InitializationMessage]) -> None:
 
 # Sets up the tables to be partitioned evenly for default and leader-follower
 def setup_partitions(messages: list[InitializationMessage], nodes: list[str], node_ids: list[str], message_iterator: list[str], distributed_iterator: list[str]) -> None:
+    global aggregator, db
+
     # Begin splitting on all valid partitioned tables
     for table in aggregator.partition:
         # To save time on initialization, we will split the table files into smaller files
@@ -146,7 +145,7 @@ def setup_partitions(messages: list[InitializationMessage], nodes: list[str], no
     
     # Since queries will be processed locally, we will insert non-partitioned tables
     if aggregator.mode == AggregatorMode.LOCAL:
-        file = open(f'{mount_point}/load.sql', 'w')
+        file = open(f'{aggregator.mount_point}/load.sql', 'w')
         for table in aggregator.non_partition:
             file.write(f"\copy {table} FROM '{aggregator.mount_point}/{table}.tbl' DELIMITER '|' CSV;\n")
         file.close()
@@ -359,6 +358,8 @@ def receive_init() -> Response:
 
 @app.route('/send_task', methods=['POST'])
 def send_task():
+    global aggregator, db
+
     query = request.json.get('query')
     tables = request.json.get('tables')
     query_id = request.json.get('query_id')
@@ -455,6 +456,8 @@ def send_task():
 
 @app.route('/receive_result', methods=['POST'])
 def receive_result():
+    global aggregator, db
+
     data = request.json
     results = data["results"]
     query_id = data["query_id"]
@@ -468,6 +471,8 @@ def receive_result():
 
 @app.route('/receive_data', methods=['POST'])
 def receive_data():
+    global aggregator, db
+
     table = request.json.get('name')
     rows = request.json.get('rows')
     # Insert data into database
@@ -475,7 +480,7 @@ def receive_data():
     return make_response("Success", 200)
 
 def init_aggregator() -> Database:
-    global aggregator, db, mount_point, workers, worker_ids
+    global aggregator, db
     
     # Get initial configurations
     host = os.getenv('DB_HOST', 'localhost')
@@ -511,10 +516,6 @@ def init_aggregator() -> Database:
 
     # Setup Database
     db = Database(host, port, name, user, password, schema)
-    
-    # Data is in load.sql
-    # subprocess.run([f"mv load.sql {mount_point}"], check=True, shell=True)
-    # subprocess.run([f"cd {mount_point} && psql -U {db.user} -d {db.name} -f load.sql"], check=True, shell=True)
     
 def main():
     init_aggregator()

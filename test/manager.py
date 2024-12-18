@@ -62,7 +62,6 @@ def smart_initialize_system(api_url: str, arch: AggregatorArchitecture, mode: Ag
     
     return
 
-
 # Processes initialization of the system
 def initialize_system(api_url: str, partition: list[str], non_partition: list[str], arch: AggregatorArchitecture, mode: AggregatorMode) -> None:
     # Prepare JSON payload
@@ -108,25 +107,6 @@ def send_sql_query(api_url: str, tables: str, sql_query: str, query_id: str) -> 
     except requests.exceptions.RequestException as e:
         print(f"Error during request: {e}")
         return {"error": str(e)}
-
-# Example usage
-# api_url = "http://localhost:5001/send_task"
-# query_type = "ResponseType.QUERY"
-# tables = ["lineitem"]
-# query_id = "1"
-# # Read SQL query from file queries/1.sql
-# sql_query = open("test_queries/1.sql").read()
-
-# response = send_sql_query(api_url, query_type, tables, sql_query, query_id)
-# print(response)
-
-# # Long running: 2, 17, 20
-# # Queries that work: 1, 2, 3, 5, 6, 8, 9, 10, 11, 12, 14, 15, 16, 18, 19
-# # Queries that don't work: 4, 13, 17, 20
-
-# # Use docker cp to retrieve the results from the container
-# # docker cp <container_id>:/app/query-results ./
-# subprocess.run(["docker", "cp", "aggregator:/app/query-results", "./"])
 
 # Verify the arguments passed in
 def verify_arguments(args):
@@ -184,7 +164,6 @@ def main() -> None:
                 print("Invalid table entered")
                 continue
         
-        print(tables)
         # Run the query
         response = send_sql_query(API_URL + TASK_ENDPOINT, tables, sql_query, str(query_count + 1))
         print(response)

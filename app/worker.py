@@ -1,11 +1,11 @@
 from flask import Flask, request, jsonify, make_response, Response
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from lib.globals import *
 from lib.database import *
 import os
 import requests
 import configparser
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
@@ -14,6 +14,8 @@ db = None
 
 @app.route('/process_query', methods=['POST'])
 def process_query() -> Response:
+    global db
+
     query = request.json.get('query')
     agg_url = request.json.get('agg_url')
     query_id = request.json.get('query_id')
@@ -34,6 +36,8 @@ def process_query() -> Response:
     
 @app.route('/process_data', methods=['POST'])
 def process_data() -> Response:
+    global db
+
     tables = request.json.get('tables')
     agg_url = request.json.get('agg_url')
     try:
@@ -54,7 +58,7 @@ def process_data() -> Response:
 
 @app.route('/receive_init', methods=['POST'])
 def receive_init() -> Response:
-    global worker
+    global worker, db
 
     # Initialize worker instance
     worker.worker_type = WorkerType(request.json.get("worker_type"))
@@ -87,6 +91,7 @@ def receive_init() -> Response:
 @app.route('/leader_data', methods=['POST'])
 def leader_data() -> Response:
     global worker
+
     tables = request.json.get('tables')
     agg_url = request.json.get('agg_url')
 
@@ -120,13 +125,15 @@ def leader_data() -> Response:
 @app.route('/follower_sync', methods=['POST'])
 def follower_sync() -> Response:
     global worker
+
     files = {path.split('/')[-1].replace('.tbl', '').split('_')[-1]: path for path in worker.partition_tables}
     return jsonify({"files": files}), 200
 
 
 @app.route('/leader_results', methods=['POST'])
 def leader_results() -> Response:
-    global worker
+    global worker, db
+
     query = request.json.get('query')
     agg_url = request.json.get('agg_url')
     query_id = request.json.get('query_id')
@@ -155,7 +162,6 @@ def leader_results() -> Response:
                                             "query_id": query_id,
                                             "worker_id": worker_id})
     # Clean up tables
-    print(delete_tables)
     for table in delete_tables:
         db.delete_rows(table)
 
