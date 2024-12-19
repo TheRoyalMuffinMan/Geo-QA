@@ -18,10 +18,10 @@ Next, after specifying (we recommend 3), run the following commands (after the D
 This will clean up any nodes that remain prior, set up the images (aggregator and worker using Dockerfiles), and set up the network bridge.
 Finally, it will generate all the node containers (this includes aggregator and workers). 
 
-<b> NOTE: This process will take sometime espesically on a weaker machine. </b> 
+<b> NOTE: This process will take some time especially on a weaker machine. </b> 
 
 ## Running
-Once setup, you can the specify partitioning and which queries you'd like to run. 
+Once setup has finished, you can then specify the partitioning scheme and which queries you'd like to run. 
 Below are some examples:
 
 ### Full Example
@@ -33,7 +33,7 @@ Enter the tables the query will be run on: lineitem
 
 ### Uniform Partition
 
-#### Local Default
+#### Local Multi-Primary
 ```bash
 python3 test/manager.py -p lineitem -a 0 -m 0
 ```
@@ -43,7 +43,7 @@ python3 test/manager.py -p lineitem -a 0 -m 0
 python3 test/manager.py -p lineitem -a 1 -m 0
 ```
 
-#### Distributed Default
+#### Distributed Multi-Primary
 <b> NOTE: For "Enter the tables the query will be run on:", the table added is ignored for distributed </b>
 
 ```bash
@@ -69,14 +69,14 @@ python3 test/manager.py -p lineitem -a 0 -m 0 test/test_queries/12.sql
 python3 test/manager.py -p lineitem -a 1 -m 0 test/test_queries/12.sql 
 ```
 
-#### Distributed Default
+#### Distributed Multi-Primary
 <b> NOTE: For "Enter the tables the query will be run on:", the table added is ignored for distributed </b>
 
 ```bash
 python3 test/manager.py -p lineitem -a 0 -m 1 test/test_queries/12.sql 
 ```
 
-#### Distributed Leader
+#### Distributed Multi-Primary
 <b> NOTE: For "Enter the tables the query will be run on:", the table added is ignored for distributed </b>
 
 ```bash
@@ -84,5 +84,5 @@ python3 test/manager.py -p lineitem -a 1 -m 1 test/test_queries/12.sql
 ```
 
 ## Cleanup
-We recommend running `./system-clean.sh` to reset and cleanup the system for different setups and query support. Further, `docker system prune -a` and `docker volume prune` to clean up Docker instances and volumes (these can take up space).
+We recommend running `./system-clean.sh` to reset and clean up the system for different setups and query support. Further, `docker system prune -a` and `docker volume prune` to clean up Docker instances and volumes (these can take up space).
 
